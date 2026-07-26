@@ -1,47 +1,11 @@
+"""data_pipeline-specific test helpers.
+
+DB fixtures (test_engine, db_session, patch_runner_session_factory) are defined
+in tests/conftest.py and inherited automatically by pytest.
+"""
 from datetime import datetime, timezone
 
 import pandas as pd
-import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
-from data_pipeline.config import settings
-from data_pipeline.db.init_db import create_schema
-from data_pipeline.db.models import Base
-
-
-@pytest.fixture(scope="session")
-def test_engine():
-    engine = create_engine(settings.database_url_test)
-    create_schema(engine)
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture
-def test_session_factory(test_engine):
-    return sessionmaker(bind=test_engine)
-
-
-@pytest.fixture
-def db_session(test_engine):
-    """Clean session per test. Truncates all tables before yielding."""
-    with test_engine.connect() as conn:
-        conn.execute(text(
-            "TRUNCATE ingestion_run_tickers, ingestion_runs, "
-            "price_bars, ticker_metadata, corporate_actions_log CASCADE"
-        ))
-        conn.commit()
-    Session = sessionmaker(bind=test_engine)
-    session = Session()
-    yield session
-    session.close()
-
-
-@pytest.fixture(autouse=True)
-def patch_runner_session_factory(test_session_factory, monkeypatch):
-    """Point the runner's SessionFactory at the test database for every test."""
-    monkeypatch.setattr("data_pipeline.ingest.runner.SessionFactory", test_session_factory)
 
 
 def make_price_df(start_date, n_days=3):
