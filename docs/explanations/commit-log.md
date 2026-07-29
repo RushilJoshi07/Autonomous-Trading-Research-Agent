@@ -48,3 +48,21 @@ all test subdirectories; package-level conftest.py is visible only within its pa
 Gate: 16/16 tests pass (Stage 1 non-regressed). Gate 1a: lookahead Sharpe > 3.0,
 clean Sharpe substantially lower. Gate 1b: cost reduces total return; commission_pct
 audit field correctly populated.
+
+---
+
+## Stage 3 — Strategy schema + indicator system (in progress)
+
+**Components so far:** (1) pandas-ta + anthropic dependencies. (2) `indicators.py` —
+two-tier registry, `IndicatorSpec`, `_infer_inputs` (signature introspection, not
+hand-typed), 29 core entries covering trend/momentum/volatility/volume/trend-strength.
+
+What is non-obvious: (1) Corrected the plan's bbands finding — `std=` is genuinely a
+dead kwarg, but the real params are `lower_std`/`upper_std` and they work; registered
+those instead of omitting std control entirely. (2) `ta.stoch(d=1)` raises regardless
+of `k`/`smooth_k` — a real pandas-ta 0.4.71b0 bug found by testing bounds; `d`'s min
+raised to 2. (3) `ta.vwap` silently returns `None` (prints a warning, doesn't raise)
+on integer-indexed data — needs a real `DatetimeIndex`. Flagged for Component 4
+(`rule_strategy.py`), not fixed here since this file builds no Series itself.
+Verification: all 29 entries executed at min+max bounds on 900 bars of synthetic
+DatetimeIndexed OHLCV; 16/16 existing tests still green.
