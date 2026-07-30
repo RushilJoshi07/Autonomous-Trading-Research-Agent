@@ -39,4 +39,15 @@ def run_backtest(
         trade_on_close=trade_on_close,
     )
     stats = bt.run(**strategy_params)
-    return BacktestResult.from_stats(stats, ticker=ticker, commission=commission)
+    return BacktestResult.from_stats(
+        stats,
+        ticker=ticker,
+        commission=commission,
+        # Not every Strategy subclass has provenance — only ones compiled by
+        # make_rule_strategy (Stage 3 Component 5) do. Hardcoded strategies like
+        # SMACrossover have no concept of it, so this must not be a hard
+        # requirement; the fallback keeps them producing identical results to
+        # before this field existed.
+        indicators_used=getattr(strategy_cls, "indicators_used", []),
+        extended_indicators_used=getattr(strategy_cls, "extended_indicators_used", []),
+    )

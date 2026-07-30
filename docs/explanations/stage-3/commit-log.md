@@ -103,3 +103,28 @@ step-04-rule-strategy.md, since this is the one lesson most worth keeping.
 Also verified: indicator dedup holds with attribute storage; VWAP works
 end-to-end through the real `self.I()` path for the first time. 17/17 tests
 green (16 existing + 1 new regression test).
+
+---
+
+## Stage 3 component 6: BacktestResult provenance fields
+
+**Change:** Added `indicators_used`/`extended_indicators_used` fields to
+`BacktestResult` (`result.py`), threaded through `engine.py`'s `run_backtest`
+via `getattr(strategy_cls, "indicators_used", [])`. Closes the gap between
+Component 5 (which computed this data) and anywhere it could actually be seen.
+
+What is non-obvious: the `getattr` fallback (not a required attribute, not an
+`isinstance(strategy_cls, RuleStrategy)` check) is the one real decision —
+`run_backtest` is shared Stage 2 infrastructure used by both `SMACrossover`
+(no concept of provenance) and `RuleStrategy` (always has it); an `isinstance`
+check would make Stage 2's `engine.py` import from Stage 3's
+`strategies/rule_strategy.py`, inverting the correct dependency direction.
+Silent empty-list fallback risk acknowledged explicitly rather than ignored:
+today there's exactly one producer of this attribute so no typo/fan-out risk
+exists yet, and unlike the Component 5 dict-storage bug (a wrong computation),
+a wrong provenance value today would be an incomplete disclosure, not a false
+one — nothing currently branches on these fields. Named the trigger for when
+that stops being true: a second producer, or Stage 5/6 actually scrutinizing
+`extended_indicators_used`. Verified both paths (RuleStrategy populates real
+data, SMACrossover defaults safely) plus full regression including Stage 2's
+sacred-gate tests, which exercise this exact path. 17/17 green, unchanged.

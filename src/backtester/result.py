@@ -1,6 +1,6 @@
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BacktestResult(BaseModel):
@@ -14,6 +14,8 @@ class BacktestResult(BaseModel):
     num_trades: int
     win_rate_pct: float
     commission_pct: float
+    indicators_used: list[str] = Field(default_factory=list)
+    extended_indicators_used: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_stats(
@@ -21,6 +23,8 @@ class BacktestResult(BaseModel):
         stats: "pd.Series",  # noqa: F821 — avoid importing pandas at module level
         ticker: str,
         commission: float,
+        indicators_used: list[str],
+        extended_indicators_used: list[str],
     ) -> "BacktestResult":
         """Parse a backtesting.py stats Series into a BacktestResult."""
         def _f(key: str) -> float:
@@ -41,4 +45,6 @@ class BacktestResult(BaseModel):
             num_trades=int(stats.get("# Trades", 0)),
             win_rate_pct=_f("Win Rate [%]"),
             commission_pct=commission,
+            indicators_used=indicators_used,
+            extended_indicators_used=extended_indicators_used,
         )
