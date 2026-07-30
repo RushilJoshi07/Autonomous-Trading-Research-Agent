@@ -74,7 +74,11 @@ Detailed per-area rigor rules load from `.claude/rules/` when you touch that cod
 Three levels. The `explanation-writer` skill covers levels 2 and 3.
 
 1. **After every commit** — a 3-6 line note appended to
-   `docs/explanations/commit-log.md`: what changed, why, anything non-obvious.
+   `docs/explanations/stage-N/commit-log.md` (the folder for the stage the commit
+   belongs to, created if it doesn't exist yet): what changed, why, anything
+   non-obvious. History through Stage 3 Component 2 lives in the old flat
+   `docs/explanations/commit-log.md`, kept as-is; the per-stage split starts with
+   Stage 3 Component 3 onward.
 2. **IMPORTANT: After every working component** (schema designed, fetcher working,
    retry logic in, cache functioning) — invoke the `explanation-writer` skill for a
    step explainer. Do not wait for the stage to finish.

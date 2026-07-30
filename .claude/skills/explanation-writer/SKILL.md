@@ -17,7 +17,11 @@ The user will read these files to learn. They must teach, not summarize.
 
 ### Level 1 — Commit note (lightweight, frequent)
 3-6 lines after each commit: what changed, why, anything non-obvious.
-Append to `docs/explanations/commit-log.md`. Do not use this skill for these.
+Append to `docs/explanations/stage-N/commit-log.md` (the folder for the stage the
+commit belongs to; create the file if it doesn't exist yet). Pre-existing history
+through Stage 3 Component 2 lives in the old flat `docs/explanations/commit-log.md`
+and stays there — the per-stage split starts with Stage 3 Component 3 onward.
+Do not use this skill for these.
 
 ### Level 2 — STEP EXPLAINER (deep, per working component)
 **Fires whenever a working component is complete** — the database schema is
