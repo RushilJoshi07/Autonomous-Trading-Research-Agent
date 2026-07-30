@@ -13,15 +13,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .indicators import CORE_INDICATORS, MAX_LOOKBACK
-
-
-def _validate_offset(offset: int) -> int:
-    if offset > 0:
-        raise ValueError(f"offset must be <= 0 (positive offset is lookahead), got {offset}")
-    if offset < -MAX_LOOKBACK:
-        raise ValueError(f"offset must be >= -{MAX_LOOKBACK}, got {offset}")
-    return offset
+from .indicators import CORE_INDICATORS, validate_offset
 
 
 def _apply_cross_check(cross_check: dict, params: dict[str, float], indicator_name: str) -> None:
@@ -53,7 +45,7 @@ class _OffsetTerm(BaseModel):
     @field_validator("offset")
     @classmethod
     def _check_offset(cls, v: int) -> int:
-        return _validate_offset(v)
+        return validate_offset(v)
 
 
 class BodyTerm(_OffsetTerm):

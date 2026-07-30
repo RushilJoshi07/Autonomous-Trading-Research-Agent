@@ -23,6 +23,21 @@ import pandas_ta as ta
 # layer). Negative offsets look back at most this many bars.
 MAX_LOOKBACK = 5
 
+
+def validate_offset(offset: int) -> int:
+    """Shared bound check: -MAX_LOOKBACK <= offset <= 0, positive = lookahead.
+
+    Used by both schema.py (construction-time) and evaluator.py (evaluation-time,
+    including offsets evaluator.py derives itself, e.g. crossover's "previous bar",
+    which schema.py never sees and so cannot validate).
+    """
+    if offset > 0:
+        raise ValueError(f"offset must be <= 0 (positive offset is lookahead), got {offset}")
+    if offset < -MAX_LOOKBACK:
+        raise ValueError(f"offset must be >= -{MAX_LOOKBACK}, got {offset}")
+    return offset
+
+
 _PRICE_FIELDS = ("open", "high", "low", "close", "volume")
 
 

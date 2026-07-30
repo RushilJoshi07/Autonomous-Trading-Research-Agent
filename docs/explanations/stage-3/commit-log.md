@@ -43,3 +43,33 @@ Verification: all 4 KNOWN_STRATEGIES construct; all 13 planned ValidationError
 cases raise correctly; 2 should-succeed edge cases (partial params, incomplete
 cross-check) succeed; 16/16 existing tests still green. No formal test_schema.py
 yet — that's Component 8.
+
+---
+
+## Stage 3 component 4: pure condition evaluator
+
+**Change:** Added `evaluator.py` (`resolve_term`, `evaluate_comparison`,
+`evaluate_condition` against a `BarContext` Protocol) plus a small preceding
+touch-up moving `validate_offset` out of `schema.py` (private) into
+`indicators.py` (public, next to `MAX_LOOKBACK`) so both modules share one
+offset-bound function instead of duplicating it.
+
+What is non-obvious: (1) the offset re-check in `resolve_term` is not pure
+ceremony — proven directly by mutating a constructed term's `.offset` post-hoc
+(these Pydantic models aren't frozen) and confirming `resolve_term` still
+caught it, a gap `schema.py`'s construction-time-only validator cannot close.
+(2) `_shifted`'s validation catches a composite constraint `schema.py`
+structurally cannot see: a term at `offset=-MAX_LOOKBACK` is legal alone but
+illegal once embedded in a crossing comparison, which implicitly needs one bar
+deeper. (3) The crossover NaN guard prevents a named bug from the Stage 3
+plan's findings — `NaN < x` and `NaN > x` are both `False` in Python, so an
+unguarded check can spuriously fire during warmup. (4) Debugged two real
+episodes to ground truth rather than assumption: morning star's initial false
+negative (traced to one of seven leaves, a synthetic-data error, fixed and
+paired with a true-negative to prove the AND composition); and three exit-condition
+KeyErrors, pinned to a missing-test-data gap in the fake context (not an
+evaluator bug) via exact traceback inspection, closed out by the structural
+fact that `evaluate_condition` has no concept of "entry" vs "exit" at all.
+`indicators.py`/`schema.py` move verified as byte-for-byte behavior-identical
+(diffed smoke-test output before/after). 16/16 existing tests still green.
+No formal test_evaluator.py yet — that's Component 8.
