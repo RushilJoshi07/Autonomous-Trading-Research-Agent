@@ -73,3 +73,33 @@ fact that `evaluate_condition` has no concept of "entry" vs "exit" at all.
 `indicators.py`/`schema.py` move verified as byte-for-byte behavior-identical
 (diffed smoke-test output before/after). 16/16 existing tests still green.
 No formal test_evaluator.py yet — that's Component 8.
+
+---
+
+## Stage 3 component 5: the strategy interpreter
+
+**Change:** Added `strategies/rule_strategy.py` — `make_rule_strategy(rule)`
+compiles a validated `StrategyRule` into a real `backtesting.py` `Strategy`
+subclass. All 4 `KNOWN_STRATEGIES` now run through the actual `run_backtest`.
+
+What is non-obvious: (1) Two real bugs found and fixed via direct evidence,
+not guessing. `ta.sma`'s numba path needs a genuine `int`, not the `float`
+every `IndicatorTerm.params` value is typed as — fixed by normalizing
+whole-valued floats to `int`, verified safe for fractional params (`bbands`
+`lower_std`) via `np.allclose` on actual output, not assumed. (2) The bigger
+one: precomputed indicators stored in a dict silently never advanced past
+their `init()`-time snapshot — `backtesting.py`'s run loop only re-slices
+indicators it discovers as *direct instance attributes* via `isinstance`
+scanning, once, right after `init()`; a dict entry is invisible to that scan.
+Produced `num_trades=0` with no exception, on data confirmed via plain pandas
+to have 22 real crossings. Root cause found by reading `backtesting.py`'s
+actual source, not guessing further. Fixed by storing each indicator as its
+own named attribute. (3) The regression test written to guard against this
+initially passed against the bug when deliberately reintroduced — a false
+negative, because it read the attribute directly instead of going through
+`BarContext.indicator()`, the actual code path the bug lived in. Rewritten and
+proven both ways (fails on bug, passes on fix) — full narrative in
+step-04-rule-strategy.md, since this is the one lesson most worth keeping.
+Also verified: indicator dedup holds with attribute storage; VWAP works
+end-to-end through the real `self.I()` path for the first time. 17/17 tests
+green (16 existing + 1 new regression test).
