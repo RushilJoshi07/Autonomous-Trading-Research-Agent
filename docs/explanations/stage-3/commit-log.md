@@ -128,3 +128,34 @@ that stops being true: a second producer, or Stage 5/6 actually scrutinizing
 `extended_indicators_used`. Verified both paths (RuleStrategy populates real
 data, SMACrossover defaults safely) plus full regression including Stage 2's
 sacred-gate tests, which exercise this exact path. 17/17 green, unchanged.
+
+---
+
+## Stage 3 component 7: minimal LLM abstraction (llm_client)
+
+**Change:** Added `src/llm_client/__init__.py` — `structured_output(prompt,
+response_model)` calls Claude via `AnthropicBedrock` (forced tool-use for
+reliable structured output) and returns a validated Pydantic instance or
+raises `StructuredOutputError`. First LLM call anywhere in the project, per
+the amended "Stages 1-3 use no LLM except one bounded offline case" rule.
+
+What is non-obvious: (1) Corrected the plan's stated provider (direct
+Anthropic API → Bedrock) against the user's actual cost-driven intent,
+verified this didn't contradict architecture.md's actual (permissive, not
+exclusive) wording before proceeding. (2) No retry loop — deliberately
+deferred to Stage 5 per the plan's own scoping, since retry policy needs a
+budget Stage 5's loop guardrails don't exist yet to provide; `StructuredOutputError`
+carries the raw `Message` + `ValidationError` so that future retry logic
+doesn't require changing this function's contract. (3) `aws_profile` is an
+explicit parameter (default `"bedrock"`), not `AWS_PROFILE` env var — third
+occurrence this session of ambient-shell-state breaking portability
+(`CLAUDE_CODE_OAUTH_TOKEN`, this same AWS profile). (4) Three real, layered
+failures resolved via direct evidence, not guessing, before a live call
+worked: unresolvable credentials (traced to `AnthropicBedrock` only checking
+the boto3 default profile), a named profile mismatch (`bedrock`, not
+`default`, found via structural grep on config section names, never secret
+values), and a Bedrock-specific on-demand-invocation error requiring an
+inference-profile ID (`us.anthropic.claude-sonnet-4-6`, looked up directly
+via `list_inference_profiles()` against the real account, not guessed at
+from a naming pattern). Live end-to-end call verified working; full
+narrative in step-06-llm-client.md. 17/17 tests green, unchanged.

@@ -15,6 +15,7 @@ dependencies = [
     "tenacity>=8.0",
     "backtesting>=0.3",
     "pandas-ta>=0.4.67b0",
+    "anthropic[bedrock]>=0.40",
 ]
 
 [project.optional-dependencies]
