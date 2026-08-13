@@ -12,24 +12,11 @@ from __future__ import annotations
 from backtesting import Strategy
 
 from ..evaluator import BarContext, IndicatorKey, evaluate_condition, indicator_key
-from ..indicators import CORE_INDICATORS
+from ..indicators import normalize_params, select_output_column
+from ..registry import ALL_INDICATORS
 from ..schema import Condition, IndicatorTerm, ScaledTerm, StrategyRule, Term
 
 _FIELD_TO_ATTR = {"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
-
-
-def _normalize_params(params: dict[str, float]) -> dict[str, float | int]:
-    """Whole-valued floats become int; e.g. length=10.0 -> 10.
-
-    IndicatorTerm.params is typed as dict[str, float] for uniform bounds-checking
-    in schema.py, but some pandas-ta indicators (e.g. sma's numba-jitted path)
-    require a genuine int for bar-count params and raise a numba TypingError on
-    a float. Verified safe for non-integer params too (e.g. bbands' lower_std):
-    a whole-valued float and the equivalent int produce numerically identical
-    output, differing only in cosmetic column-name formatting ("1.0" vs "1"),
-    which column_prefix matching (prefix-only) is already indifferent to.
-    """
-    return {k: (int(v) if float(v).is_integer() else v) for k, v in params.items()}
 
 
 def _collect_from_term(term: Term) -> list[IndicatorTerm]:
@@ -101,14 +88,14 @@ def make_rule_strategy(rule: StrategyRule) -> type[Strategy]:
         unique_terms.setdefault(indicator_key(term), term)
 
     used_names = {term.name for term in unique_terms.values()}
-    indicators_used = sorted(n for n in used_names if CORE_INDICATORS[n].tier == "core")
-    extended_indicators_used = sorted(n for n in used_names if CORE_INDICATORS[n].tier == "extended")
+    indicators_used = sorted(n for n in used_names if ALL_INDICATORS[n].tier == "core")
+    extended_indicators_used = sorted(n for n in used_names if ALL_INDICATORS[n].tier == "extended")
 
     class RuleStrategy(Strategy):
         def init(self) -> None:
             self._key_to_attr: dict[IndicatorKey, str] = {}
             for i, (key, term) in enumerate(unique_terms.items()):
-                spec = CORE_INDICATORS[term.name]
+                spec = ALL_INDICATORS[term.name]
                 price_args = [getattr(self.data, _FIELD_TO_ATTR[field]).s for field in spec.inputs]
 
                 def _compute(*args, _spec=spec, _name=term.name, **kwargs):
@@ -118,18 +105,13 @@ def make_rule_strategy(rule: StrategyRule) -> type[Strategy]:
                             f"{_name}: pandas-ta returned None — check inputs "
                             f"(e.g. a required DatetimeIndex)"
                         )
-                    if _spec.column_prefix:
-                        cols = [c for c in result.columns if c.startswith(_spec.column_prefix)]
-                        if len(cols) != 1:
-                            raise ValueError(
-                                f"{_name}: column_prefix {_spec.column_prefix!r} matched "
-                                f"{len(cols)} columns, expected exactly 1"
-                            )
-                        result = result[cols[0]]
-                    return result
+                    try:
+                        return select_output_column(result, _spec.column_prefix)
+                    except ValueError as e:
+                        raise ValueError(f"{_name}: {e}") from e
 
                 attr_name = f"_ind_{i}"
-                setattr(self, attr_name, self.I(_compute, *price_args, **_normalize_params(term.params)))
+                setattr(self, attr_name, self.I(_compute, *price_args, **normalize_params(term.params)))
                 self._key_to_attr[key] = attr_name
 
             self._ctx: BarContext = _RuleBarContext(self)

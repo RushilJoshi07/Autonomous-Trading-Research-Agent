@@ -13,7 +13,8 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .indicators import CORE_INDICATORS, validate_offset
+from .indicators import validate_offset
+from .registry import ALL_INDICATORS
 
 
 def _apply_cross_check(cross_check: dict, params: dict[str, float], indicator_name: str) -> None:
@@ -80,7 +81,7 @@ class IndicatorTerm(_OffsetTerm):
 
     @model_validator(mode="after")
     def _check_indicator(self) -> "IndicatorTerm":
-        spec = CORE_INDICATORS.get(self.name)
+        spec = ALL_INDICATORS.get(self.name)
         if spec is None:
             raise ValueError(f"unknown indicator {self.name!r}")
         if not spec.verified:
