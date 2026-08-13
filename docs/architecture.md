@@ -46,14 +46,19 @@
 |---|---|---|---|
 | 1 | Data pipeline (yfinance → Postgres, cache, retry) | Data matches source; graceful failure | No |
 | 2 | Backtesting engine | **SACRED GATE 1** — no lookahead; costs change outcomes | No |
-| 3 | Strategy schema + 2–3 known strategies | Literature-consistent results | No |
+| 3 | Strategy schema + 2–3 known strategies | Literature-consistent results | Build-time only |
 | 4 | Tools wrapped as MCP servers | Each callable manually before any agent use | No |
 | 5 | Agentic core (LangGraph, loop, RAG, guardrails) | **SACRED GATE 2** — never fabricates; kills bad hypotheses | Yes |
 | 6 | Evaluation harness | Catches a deliberately-broken agent | Yes |
 | 7 | Frontend | A stranger can use it unexplained | — |
 | 8 | Deploy + monitor | Traced in production; drift alerts fire | — |
 
-**Stages 1–3 involve no LLM at all** — months of work at zero API cost.
+**Stages 1–3 involve no LLM in the runtime path** — months of that work ran at zero
+API cost. Stage 3 makes one narrow, disclosed exception: a single offline,
+build-time LLM call proposes parameter bounds for extended indicators, and every
+proposal is verified by actual execution before it can be used (detail: §7, §9
+Stage 3). No stage before 5 depends on an LLM being reachable at runtime — the
+agent that reasons doesn't exist until then.
 **End of Stage 3 = a complete working backtesting product.**
 
 ---
@@ -538,7 +543,10 @@ small and late; tear down anything not in use.
 - **Paid API only where reasoning quality IS the product** — hypothesis generation,
   verdict synthesis, and evaluation runs.
 
-Stages 1–3 involve **no LLM at all** — months of work at zero API cost.
+Stages 1–3 involve **no LLM in the runtime path** — months of that work ran at
+zero API cost. The one exception, Stage 3's extended-indicator bounds proposal
+(§7, §9 Stage 3), is a single offline build-time call verified by execution
+before use — not a recurring runtime cost, and not a precedent for adding one.
 
 ---
 

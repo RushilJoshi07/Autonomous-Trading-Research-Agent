@@ -95,7 +95,13 @@ Every explanation must justify **why this and not the alternative**.
   my approval before acting.
 - Work bottom-up in stages. Each stage complete and verified before the next.
   I should never be left holding a broken half-thing.
-- **Stages 1-3 use no LLM at all.** Do not add LLM calls before Stage 4.
+- **No LLM in the runtime path before Stage 5.** Stages 1-4's actual behavior never
+  calls an LLM to do its job — the agent that reasons doesn't exist until Stage 5.
+  Stage 3 made one disclosed exception, already built: `generate_extended_indicators.py`
+  makes a single offline, build-time call to propose indicator parameter bounds,
+  and every proposal is verified by execution before being trusted (see
+  `docs/architecture.md` §7, §9 Stage 3). That exception is closed, not a
+  precedent — do not add another LLM call before Stage 5's loop guardrails exist.
 - Build on existing libraries (backtesting.py/vectorbt, pandas-ta) - not from scratch.
 
 ## Build order
@@ -111,7 +117,7 @@ a stage is complete without evidence that its gate has passed.
 |---|---|---|---|
 | 1 | Data pipeline (yfinance → Postgres, cache, retry/fallback) | Data matches a known source; caching works; graceful failure | No |
 | 2 | Backtesting engine (on backtesting.py/vectorbt) | **SACRED GATE 1** — no lookahead; costs change outcomes | No |
-| 3 | Strategy schema + 2–3 documented strategies | Literature-consistent results → working backtesting product | No |
+| 3 | Strategy schema + 2–3 documented strategies | Literature-consistent results → working backtesting product | Build-time only |
 | 4 | Tools wrapped as MCP servers | Each callable manually before any agent uses it | No |
 | 5 | Agentic core (LangGraph, loop, tiered RAG, guardrails) | **SACRED GATE 2** — never fabricates; kills bad hypotheses | Yes |
 | 6 | Evaluation harness (golden set) | Catches a deliberately-broken agent | Yes |
