@@ -187,3 +187,35 @@ orderings, not taken on the LLM's word — a requirement raised during plan
 review, alongside the registry collision check and per-chunk LLM fault
 isolation, all three implemented and verified working, not just acknowledged.
 Full narrative in step-07-extended-indicators.md.
+
+---
+
+## Stage 3 plan §8: complete the formal test suite
+
+**Change:** Added `test_evaluator.py` (28 new tests) and expanded
+`test_rule_strategy.py` (+6) and `test_extended_indicators.py` (+3), closing
+out the deferred plan §8 test-suite pass. Suite goes from 133 to 170 tests,
+all green. No `src/` changes.
+
+What is non-obvious: (1) `test_evaluator.py`'s `FakeBarContext` raises
+`KeyError` on any unset `(field, offset)` lookup rather than defaulting —
+deliberate, so a forgotten test-setup value crashes loudly instead of
+silently evaluating against a phantom zero. (2) The crossover test suite
+specifically includes an "already above on both bars, should NOT fire" case
+— without it, a regression degrading `crosses_above` into a plain threshold
+check would pass every other test. (3) Positive-offset-raises is tested at
+two layers on purpose (isolated `resolve_term`, and the whole compiled
+`make_rule_strategy` + `run_backtest` pipeline) via the established
+post-construction `.offset` mutation bypass, since schema.py's
+construction-time validator can't see a value set after construction. (4)
+Applied the Component-5-dedup-test lesson proactively: monkeypatched
+`validate_offset` across all three modules' independently-bound references
+(patching only `indicators.py`'s copy would NOT affect `schema.py`'s or
+`evaluator.py`'s, since `from .indicators import validate_offset` binds the
+name at import time) and confirmed both positive-offset tests genuinely fail
+without the fix — one with an unexpected `KeyError`, the other with "DID NOT
+RAISE" — before trusting either as real coverage. (5) The extended-indicator
+stub-validity test imports the real, checked-in `EXTENDED_INDICATORS` dict
+directly, not a fixture — confirmed with the user twice before approval,
+since only the real artifact can catch a future bad regeneration. Full
+narrative in step-08-test-suite-completion.md.

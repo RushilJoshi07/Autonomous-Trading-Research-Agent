@@ -1,14 +1,30 @@
 """Tests for strategies/rule_strategy.py — the StrategyRule interpreter.
 
-Currently holds one targeted regression test for a real bug found while building
-this component; the full Component 8 test suite (each KNOWN_STRATEGY, positive
-offset raises through the whole pipeline, etc.) is written when Component 8 begins.
+Holds the original targeted regression test for a real bug found while building
+this component (kept exactly as-is, per the Stage 3 handoff document), plus the
+plan §8 formal suite: each KNOWN_STRATEGY compiles and runs, positive offset
+raises through the whole compiled pipeline (not just the evaluator in isolation),
+and indicator dedup holds across a real KNOWN_STRATEGIES rule.
 """
+
+import pytest
 
 from backtester.engine import run_backtest
 from backtester.evaluator import indicator_key
-from backtester.schema import Comparison, Condition, ConstantTerm, IndicatorTerm, StrategyRule
+from backtester.schema import (
+    KNOWN_STRATEGIES,
+    Comparison,
+    Condition,
+    ConstantTerm,
+    IndicatorTerm,
+    PriceTerm,
+    StrategyRule,
+)
 from backtester.strategies.rule_strategy import _collect_indicator_terms, make_rule_strategy
+
+
+def _leaf(left, op, right) -> Condition:
+    return Condition(kind="leaf", comparison=Comparison(left=left, op=op, right=right))
 
 
 def test_deduplicated_indicator_advances_per_bar_not_static(synthetic_data):
@@ -86,3 +102,56 @@ def test_deduplicated_indicator_advances_per_bar_not_static(synthetic_data):
         f"guards against."
     )
     assert result.num_trades > 0
+
+
+@pytest.mark.parametrize("name", sorted(KNOWN_STRATEGIES))
+def test_known_strategy_compiles_and_runs(name, synthetic_data):
+    """Every KNOWN_STRATEGIES entry compiles via make_rule_strategy and runs via
+    run_backtest with zero strategy-specific code. The three indicator-based
+    strategies must produce real trades on 500 bars of synthetic data; morning
+    star (a rare 3-bar reversal pattern) only needs to execute without raising --
+    requiring trades from it would make the test flaky against the fixture's
+    random seed, not meaningfully safer (matches the plan's own "few trades
+    fine; must execute" standard for this strategy)."""
+    rule = KNOWN_STRATEGIES[name]
+    strategy_cls = make_rule_strategy(rule)
+    result = run_backtest(synthetic_data, strategy_cls, ticker="SYNTHETIC")
+    if name == "morning_star":
+        assert result.num_trades >= 0
+    else:
+        assert result.num_trades > 0
+
+
+def test_positive_offset_raises_through_full_compiled_pipeline(synthetic_data):
+    """schema.py's validator blocks constructing a term with a positive offset
+    directly (see test_schema.py). This proves the protection also holds through
+    the WHOLE compiled pipeline -- make_rule_strategy + a real run_backtest run --
+    not just at a direct, isolated evaluator.resolve_term call (test_evaluator.py
+    already covers that narrower case). The term is mutated to a positive offset
+    AFTER the whole rule is constructed (Pydantic models here aren't frozen or
+    validate_assignment), the same bypass technique used throughout this stage's
+    tests, since schema.py's construction-time validator can't see a value set
+    after construction."""
+    rule = StrategyRule(
+        name="lookahead_leak_test",
+        description="deliberately broken after construction: a positive (future) offset",
+        entry=_leaf(PriceTerm(field="close", offset=-1), "gt", ConstantTerm(value=0.0)),
+        exit_after_bars=5,
+    )
+    rule.entry.comparison.left.offset = 1  # bypasses schema.py's construction-time validator
+    strategy_cls = make_rule_strategy(rule)
+    with pytest.raises(ValueError, match="lookahead"):
+        run_backtest(synthetic_data, strategy_cls, ticker="SYNTHETIC")
+
+
+def test_sma_crossover_dedups_to_two_unique_indicators():
+    """sma_10_30_crossover references SMA(10) and SMA(30) in BOTH its entry and
+    exit conditions -- 4 IndicatorTerm references total, but only 2 genuinely
+    distinct indicators. A lighter-weight structural check than the liveness
+    test above (which owns proving dedup actually behaves correctly at runtime,
+    not just that the count comes out right)."""
+    rule = KNOWN_STRATEGIES["sma_10_30_crossover"]
+    all_terms = _collect_indicator_terms(rule.entry) + _collect_indicator_terms(rule.exit)
+    unique_keys = {indicator_key(t) for t in all_terms}
+    assert len(all_terms) == 4
+    assert len(unique_keys) == 2
