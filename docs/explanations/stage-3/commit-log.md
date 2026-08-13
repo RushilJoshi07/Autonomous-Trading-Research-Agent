@@ -159,3 +159,31 @@ inference-profile ID (`us.anthropic.claude-sonnet-4-6`, looked up directly
 via `list_inference_profiles()` against the real account, not guessed at
 from a naming pattern). Live end-to-end call verified working; full
 narrative in step-06-llm-client.md. 17/17 tests green, unchanged.
+
+---
+
+## Stage 3 component 8: extended indicator generation and verification
+
+**Change:** Added the two-tier extended registry: `scripts/generate_extended_indicators.py`
+(introspection + batched LLM bounds proposals) and `scripts/verify_extended_indicators.py`
+(execution-based checks: shape, per-param sensitivity, cross-check, non-NaN).
+193 candidates generated, 127 verified for real. New `registry.py` merges
+core+extended with a collision check; `schema.py`/`rule_strategy.py` switched
+from `CORE_INDICATORS` to `ALL_INDICATORS` — the actual fix that makes extended
+indicators usable at all. New `test_indicator_core.py`, `test_schema.py`,
+`test_extended_indicators.py` (116 new tests). 133/133 green.
+
+What is non-obvious: (1) fixed a real, latent Component-2 bug — pandas-ta's
+`open_` alias was never matched by `_infer_inputs`, invisible until this sweep
+exercised an open-requiring function. (2) Column-prefix derivation needed 3
+sample points, not 2 — a naive 2-point diff was fooled by `kc`'s `length`
+bounds `(1, 100)` coincidentally sharing a leading digit. (3) `ta.ichimoku`
+uniquely returns `tuple[DataFrame, DataFrame]`, not Series/DataFrame — excluded
+explicitly rather than crashing downstream; this also appears to have resolved
+an unreproducible native `SIGTRAP` crash whose exact mechanism was never fully
+confirmed (recorded honestly in step-07, not hidden). (4) Cross-check claims
+(e.g. MACD-style `fast < slow`) are execution-verified via satisfied/violated
+orderings, not taken on the LLM's word — a requirement raised during plan
+review, alongside the registry collision check and per-chunk LLM fault
+isolation, all three implemented and verified working, not just acknowledged.
+Full narrative in step-07-extended-indicators.md.
