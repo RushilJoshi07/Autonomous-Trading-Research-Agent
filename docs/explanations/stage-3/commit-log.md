@@ -219,3 +219,36 @@ stub-validity test imports the real, checked-in `EXTENDED_INDICATORS` dict
 directly, not a fixture — confirmed with the user twice before approval,
 since only the real artifact can catch a future bad regeneration. Full
 narrative in step-08-test-suite-completion.md.
+
+---
+
+## Stage 3 plan §9: the gate script (PASSED, real AAPL data)
+
+**Change:** Added `scripts/verify_stage3_gate.py` — runs all four
+`KNOWN_STRATEGIES` against real AAPL 2015-01-01..2024-12-31 (already
+ingested by Stage 1, no new fetching needed) and checks trade count, Sharpe,
+and max drawdown against the plan's literature-consistent bounds. Result:
+3/4 clean, 1 (`rsi_14_30_70`, 12 trades vs a floor of 20) via a formally
+disclosed, independently-verified deviation. Exit code 0.
+
+What is non-obvious: (1) The `rsi_14_30_70` shortfall was independently
+reproduced via a hand-written plain-Python long-only/single-position state
+machine walking real RSI(14) values bar by bar, completely outside
+`backtesting.py` and this codebase's evaluator — it reproduced `num_trades=12`
+exactly, proving the pipeline correct: RSI(14) crosses below 30 seventy-one
+times, but most cluster while a position from an earlier dip is already
+open, so only 12 genuine flat-to-long transitions occur. (2) Explicitly
+rejected two alternatives before writing any code: silently loosening the
+bound (the same overfitting-via-retuned-threshold failure mode
+architecture.md's screener section already warns against) and a verbal-only
+acceptance (inconsistent with this project's own disclosed-limitation
+pattern elsewhere, e.g. the survivorship-bias coverage gap). (3) Built
+`KNOWN_DEVIATIONS`, a formal, keyed `(strategy, bound)` exception mechanism
+requiring a dated, reproducible reason string — printed on every run, never
+silently swallowed. (4) `MAX_DEVIATIONS_BEFORE_REVIEW = 3` treats
+*accumulation* of accepted deviations as its own signal, independent of how
+well each is investigated — the gate refuses a clean pass past that count.
+Both mechanisms verified working both directions (real run passes; a
+separate isolated test with 2 additional forced real violations correctly
+triggers BLOCKED). 170/170 existing tests unaffected. Full narrative,
+including the complete investigation, in step-09-gate-script.md.
