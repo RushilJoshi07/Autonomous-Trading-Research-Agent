@@ -44,3 +44,27 @@ instead, confirmed with a synthetic test before writing the real loop. Full
 trail: `docs/explanations/stage-4/step-02-market-data-tool.md`. Verified
 against real AAPL data and a real invalid-ticker call through the actual
 protocol handler; full 170-test suite confirmed unchanged.
+
+---
+
+## Stage 4 component 3: backtester tool
+
+**Change:** Added `run_backtest(rule, ticker, start=None, end=None,
+commission=None, cash=None) -> BacktestResult` — wraps `load_price_data`,
+`make_rule_strategy`, and `engine.run_backtest` (aliased `_run_backtest` to
+avoid shadowing) exactly as Stage 2/3 built them. `commission`/`cash`
+default to `None` and are only forwarded if set, keeping `engine.py`'s own
+constants the single source of truth. `trade_on_close` deliberately not
+exposed — it exists for one narrow Stage-2 lookahead-testing scenario, not
+anything a `StrategyRule`-compiled strategy needs.
+
+What is non-obvious: confirmed the SDK's argument coercion (only proven for
+a scalar `date` in Component 2) also handles `StrategyRule`'s full nested,
+recursive, discriminated-union structure — and that a malformed rule
+(unknown indicator, three levels deep) is rejected before the tool body
+even runs, with the full precision of the underlying validator's message
+and field path preserved. Full trail:
+`docs/explanations/stage-4/step-03-backtester-tool.md`. Verified end-to-end
+with a real backtest (SMA(10/30) crossover, AAPL, 2015-2024: Sharpe 0.678,
+44 trades) and a real malformed-rule error; full 170-test suite confirmed
+unchanged.
