@@ -68,3 +68,28 @@ and field path preserved. Full trail:
 with a real backtest (SMA(10/30) crossover, AAPL, 2015-2024: Sharpe 0.678,
 44 trades) and a real malformed-rule error; full 170-test suite confirmed
 unchanged.
+
+---
+
+## Stage 4 component 4: indicators tool
+
+**Change:** Added `backtester/indicator_compute.py` (`compute_indicator`,
+the first genuinely new domain logic this stage, reusing `IndicatorTerm`
+for validation and Stage 3's own `normalize_params`/`select_output_column`
+unchanged) and two new MCP tools, `compute_indicator` and `list_indicators`.
+New `IndicatorValueOut`/`IndicatorInfo` response schemas.
+
+What is non-obvious: `_FIELD_TO_COLUMN` deliberately duplicates
+`rule_strategy.py`'s `_FIELD_TO_ATTR` rather than being refactored into a
+shared constant — discussed explicitly with the user first, since it looks
+like it contradicts Component 3's commission/cash dedup but isn't the same
+risk (fixed external naming convention vs. a business-decision number that
+can drift). `NaN` rows are filtered in the MCP wrapper, not the pure
+function, since that's a JSON-shaping concern, not a fact about the
+computation. Full trail:
+`docs/explanations/stage-4/step-04-indicators-tool.md`. Verified
+end-to-end: `list_indicators` returned 222 entries (29 core, matching
+Stage 3's own documented count exactly); `compute_indicator(AAPL, SMA,
+length=10)` correctly dropped exactly its 9-bar warm-up period; both an
+unknown-indicator and an out-of-bounds-parameter error surfaced correctly.
+Full 170-test suite confirmed unchanged.
