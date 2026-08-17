@@ -93,3 +93,33 @@ Stage 3's own documented count exactly); `compute_indicator(AAPL, SMA,
 length=10)` correctly dropped exactly its 9-bar warm-up period; both an
 unknown-indicator and an out-of-bounds-parameter error surfaced correctly.
 Full 170-test suite confirmed unchanged.
+
+---
+
+## Stage 4 component 5: regime classifier tool
+
+**Change:** Refactored `indicator_compute.py` to split out
+`compute_indicator_series(df, name, params)` from `compute_indicator`
+(discussed first — unlike Component 4's `_FIELD_TO_COLUMN` duplication,
+this is real multi-line logic that would otherwise need 3 copies, not a
+stable constant). Added `backtester/regime.py` (`classify_regime`: ADX for
+trend, NATR over raw ATR for volatility, 252-bar trailing rolling
+percentile, tercile labels with an explicit `neutral` band) and the
+`classify_regime` MCP tool, plus `RegimeRecordOut`.
+
+What is non-obvious: the MCP tool always loads a ticker's *entire*
+history internally and filters the output to the caller's requested
+window only afterward — never forwards `start` into `load_price_data` the
+way every other tool this stage does — because the rolling computation
+needs ~252 prior bars to label even the first requested bar correctly.
+Considered and rejected an estimated calendar-day buffer instead; loading
+everything is structurally correct rather than approximately correct.
+Also found the real insufficient-history boundary lands at bar 264, not
+252 — ADX(14)'s own ~13-bar warmup compounds with the 252-bar rolling
+window. Full trail:
+`docs/explanations/stage-4/step-05-regime-classifier-tool.md`. Verified
+end-to-end: a 2024-start request against AAPL's decade-plus history
+returned real labels immediately (proving the fix works); the full-history
+transition was found exactly at index 263→264. Full 170-test suite
+confirmed unchanged (checked once after the refactor alone, then again
+after the full component).

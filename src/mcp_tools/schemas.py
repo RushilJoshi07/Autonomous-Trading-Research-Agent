@@ -24,3 +24,11 @@ class IndicatorInfo(BaseModel):
     verified: bool
     inputs: list[str]
     params: dict[str, tuple[float, float]]
+
+
+class RegimeRecordOut(BaseModel):
+    date: date
+    adx_percentile: float | None
+    trend_regime: Literal["choppy", "neutral", "trending", "insufficient_history"]
+    natr_percentile: float | None
+    vol_regime: Literal["low_vol", "neutral", "high_vol", "insufficient_history"]

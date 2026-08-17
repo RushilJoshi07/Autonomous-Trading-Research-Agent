@@ -20,6 +20,22 @@ from .schema import IndicatorTerm
 _FIELD_TO_COLUMN = {"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
 
 
+def compute_indicator_series(df: pd.DataFrame, name: str, params: dict[str, float]) -> pd.Series:
+    """Compute one named indicator's series from an already-loaded price DataFrame.
+
+    Raises ValueError if name is unknown/unverified or params are out of bounds
+    (via IndicatorTerm's own validation) or if the underlying pandas-ta call fails.
+    """
+    IndicatorTerm(name=name, params=params)  # validation only; result discarded
+
+    spec = ALL_INDICATORS[name]
+    price_args = [df[_FIELD_TO_COLUMN[field]] for field in spec.inputs]
+    result = spec.fn(*price_args, **normalize_params(params))
+    if result is None:
+        raise ValueError(f"{name}: pandas-ta returned None — check inputs (e.g. a required DatetimeIndex)")
+    return select_output_column(result, spec.column_prefix)
+
+
 def compute_indicator(
     ticker: str,
     name: str,
@@ -28,17 +44,6 @@ def compute_indicator(
     start: date | None = None,
     end: date | None = None,
 ) -> pd.Series:
-    """Compute one named indicator's full series for a ticker.
-
-    Raises ValueError if name is unknown/unverified or params are out of bounds
-    (via IndicatorTerm's own validation) or if the underlying pandas-ta call fails.
-    """
-    IndicatorTerm(name=name, params=params)  # validation only; result discarded
-
-    spec = ALL_INDICATORS[name]
+    """Compute one named indicator's full series for a ticker."""
     df = load_price_data(ticker, session, start=start, end=end)
-    price_args = [df[_FIELD_TO_COLUMN[field]] for field in spec.inputs]
-    result = spec.fn(*price_args, **normalize_params(params))
-    if result is None:
-        raise ValueError(f"{name}: pandas-ta returned None — check inputs (e.g. a required DatetimeIndex)")
-    return select_output_column(result, spec.column_prefix)
+    return compute_indicator_series(df, name, params)

@@ -6,12 +6,13 @@ from mcp.server import MCPServer
 from backtester.data_loader import load_price_data
 from backtester.engine import run_backtest as _run_backtest
 from backtester.indicator_compute import compute_indicator as _compute_indicator
+from backtester.regime import classify_regime as _classify_regime
 from backtester.registry import ALL_INDICATORS
 from backtester.result import BacktestResult
 from backtester.schema import StrategyRule
 from backtester.strategies.rule_strategy import make_rule_strategy
 from data_pipeline.db.session import SessionFactory
-from mcp_tools.schemas import IndicatorInfo, IndicatorValueOut, PriceBarOut
+from mcp_tools.schemas import IndicatorInfo, IndicatorValueOut, PriceBarOut, RegimeRecordOut
 
 mcp = MCPServer("agentic-finance-platform")
 
@@ -79,6 +80,26 @@ def list_indicators() -> list[IndicatorInfo]:
     return [
         IndicatorInfo(name=name, tier=spec.tier, verified=spec.verified, inputs=list(spec.inputs), params=spec.params)
         for name, spec in sorted(ALL_INDICATORS.items())
+    ]
+
+
+@mcp.tool()
+def classify_regime(ticker: str, start: date | None = None, end: date | None = None) -> list[RegimeRecordOut]:
+    """Label each bar's trend strength and volatility level, relative to its own trailing 252-bar history."""
+    with SessionFactory() as session:
+        df = load_price_data(ticker, session, start=None, end=end)
+    regimes = _classify_regime(df)
+    if start is not None:
+        regimes = regimes[regimes.index >= pd.Timestamp(start)]
+    return [
+        RegimeRecordOut(
+            date=row.Index.date(),
+            adx_percentile=None if pd.isna(row.adx_percentile) else float(row.adx_percentile),
+            trend_regime=row.trend_regime,
+            natr_percentile=None if pd.isna(row.natr_percentile) else float(row.natr_percentile),
+            vol_regime=row.vol_regime,
+        )
+        for row in regimes.itertuples()
     ]
 
 
