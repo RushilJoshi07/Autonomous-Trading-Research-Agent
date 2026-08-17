@@ -16,6 +16,7 @@ class BacktestResult(BaseModel):
     commission_pct: float
     indicators_used: list[str] = Field(default_factory=list)
     extended_indicators_used: list[str] = Field(default_factory=list)
+    trade_returns: list[float] = Field(default_factory=list)
 
     @classmethod
     def from_stats(
@@ -34,6 +35,9 @@ class BacktestResult(BaseModel):
             except (TypeError, ValueError):
                 return float("nan")
 
+        trades = stats.get("_trades")
+        trade_returns = trades["ReturnPct"].tolist() if trades is not None else []
+
         return cls(
             ticker=ticker,
             start=stats["Start"].date() if hasattr(stats["Start"], "date") else stats["Start"],
@@ -47,4 +51,5 @@ class BacktestResult(BaseModel):
             commission_pct=commission,
             indicators_used=indicators_used,
             extended_indicators_used=extended_indicators_used,
+            trade_returns=trade_returns,
         )

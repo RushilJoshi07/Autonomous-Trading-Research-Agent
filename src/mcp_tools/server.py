@@ -13,6 +13,12 @@ from backtester.schema import StrategyRule
 from backtester.strategies.rule_strategy import make_rule_strategy
 from data_pipeline.db.session import SessionFactory
 from mcp_tools.schemas import IndicatorInfo, IndicatorValueOut, PriceBarOut, RegimeRecordOut
+from research_stats.confidence import ConfidenceIntervalResult
+from research_stats.confidence import bootstrap_ci as _bootstrap_ci
+from research_stats.multiple_comparisons import MultipleComparisonsResult
+from research_stats.multiple_comparisons import correct_p_values as _correct_p_values
+from research_stats.significance import SignificanceResult
+from research_stats.significance import test_significance as _test_significance
 
 mcp = MCPServer("agentic-finance-platform")
 
@@ -101,6 +107,55 @@ def classify_regime(ticker: str, start: date | None = None, end: date | None = N
         )
         for row in regimes.itertuples()
     ]
+
+
+@mcp.tool()
+def test_significance(
+    rule: StrategyRule,
+    ticker: str,
+    start: date | None = None,
+    end: date | None = None,
+    commission: float | None = None,
+    cash: float | None = None,
+    n_resamples: int = 300,
+    seed: int = 0,
+) -> SignificanceResult:
+    """Test whether a strategy beats randomized entries at the same trade frequency (Monte Carlo permutation test, no distributional assumption)."""
+    with SessionFactory() as session:
+        df = load_price_data(ticker, session, start=start, end=end)
+    return _test_significance(
+        df, rule, ticker=ticker, commission=commission, cash=cash, n_resamples=n_resamples, seed=seed
+    )
+
+
+@mcp.tool()
+def confidence_interval(
+    rule: StrategyRule,
+    ticker: str,
+    start: date | None = None,
+    end: date | None = None,
+    commission: float | None = None,
+    cash: float | None = None,
+    confidence_level: float = 0.95,
+    seed: int = 0,
+) -> ConfidenceIntervalResult:
+    """Bootstrap confidence interval for a strategy's mean per-trade return, resampled at the trade level (not daily bars)."""
+    with SessionFactory() as session:
+        df = load_price_data(ticker, session, start=start, end=end)
+    strategy_cls = make_rule_strategy(rule)
+    kwargs = {}
+    if commission is not None:
+        kwargs["commission"] = commission
+    if cash is not None:
+        kwargs["cash"] = cash
+    result = _run_backtest(df, strategy_cls, ticker=ticker, **kwargs)
+    return _bootstrap_ci(result.trade_returns, confidence_level=confidence_level, seed=seed)
+
+
+@mcp.tool()
+def correct_p_values(p_values: list[float], method: str = "bh") -> MultipleComparisonsResult:
+    """Adjust a list of p-values for multiple comparisons (Benjamini-Hochberg by default)."""
+    return _correct_p_values(p_values, method=method)
 
 
 if __name__ == "__main__":

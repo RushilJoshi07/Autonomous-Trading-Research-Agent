@@ -123,3 +123,40 @@ returned real labels immediately (proving the fix works); the full-history
 transition was found exactly at index 263→264. Full 170-test suite
 confirmed unchanged (checked once after the refactor alone, then again
 after the full component).
+
+---
+
+## Stage 4 component 6: statistics tool
+
+**Change:** Largest component this stage. Added `trade_returns` to
+`BacktestResult` (Stage 2/3's `result.py`). Refactored `rule_strategy.py`
+to extract `unique_terms`/`indicator_usage`/`wire_indicators`/`apply_exit`
+as shared helpers (discussed first — needed so a random-entry control can
+share exit logic and indicator wiring with the real strategy exactly,
+making the statistical comparison valid, not just tidy). Added
+`backtester/strategies/random_entry_strategy.py` (Bernoulli per-bar entry,
+calibrated to the real strategy's trade count in expectation). Added new
+`research_stats/` package: `significance.py` (Monte Carlo permutation test
+via `scipy.stats.monte_carlo_test`, with a capped retry-on-zero-trades
+guard against `NaN`-corrupting the null distribution), `confidence.py`
+(trade-level bootstrap CI via `scipy.stats.bootstrap`), and
+`multiple_comparisons.py` (Benjamini-Hochberg via
+`scipy.stats.false_discovery_control`). Added `test_significance`,
+`confidence_interval`, `correct_p_values` MCP tools.
+
+What is non-obvious: `scipy.stats.monte_carlo_test` passes `size` to `rvs`
+as a tuple, not a plain int — a real bug from an offline toy check that
+happened to work by accident (`numpy`'s `size=` accepts both), caught only
+when the real function was tested for real. Revised `n_resamples` down
+from the plan's original guess of 999 to 300 after measuring real
+backtest cost (~93ms), then found the real default run took 4.7s in
+practice — much faster than even the revised estimate. Full trail:
+`docs/explanations/stage-4/step-06-statistics-tool.md`. Verified
+end-to-end against real AAPL data: `test_significance` reproduced
+Component 3's known Sharpe (0.678) and returned a defensible p-value
+(≈0.33 — SMA crossover doesn't convincingly beat random entries on AAPL's
+strong uptrend); `confidence_interval` returned a real 44-trade CI; both
+error paths (zero real trades, too-few-trades CI) verified, one requiring
+a deliberately-constructed impossible rule to actually reach. Full
+170-test suite confirmed unchanged (checked after the refactor alone and
+after the full component).

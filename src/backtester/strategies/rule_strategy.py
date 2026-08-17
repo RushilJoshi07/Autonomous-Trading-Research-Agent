@@ -79,41 +79,78 @@ class _RuleBarContext:
             return float("nan")
 
 
+def unique_terms(*term_lists: list[IndicatorTerm]) -> dict[IndicatorKey, IndicatorTerm]:
+    """Dedup any number of IndicatorTerm lists into one key->term map, first occurrence wins."""
+    result: dict[IndicatorKey, IndicatorTerm] = {}
+    for terms in term_lists:
+        for term in terms:
+            result.setdefault(indicator_key(term), term)
+    return result
+
+
+def indicator_usage(terms: dict[IndicatorKey, IndicatorTerm]) -> tuple[list[str], list[str]]:
+    """Split a unique-terms map into (core names used, extended names used), both sorted."""
+    used_names = {term.name for term in terms.values()}
+    indicators_used = sorted(n for n in used_names if ALL_INDICATORS[n].tier == "core")
+    extended_indicators_used = sorted(n for n in used_names if ALL_INDICATORS[n].tier == "extended")
+    return indicators_used, extended_indicators_used
+
+
+def wire_indicators(strategy: Strategy, terms: dict[IndicatorKey, IndicatorTerm]) -> dict[IndicatorKey, str]:
+    """Set up self.I()-computed indicator arrays on strategy for each unique term.
+
+    Returns the key->attribute-name map _RuleBarContext.indicator() needs to read them
+    back. See _RuleBarContext's own docstring for why each one gets a named attribute
+    rather than living in a dict.
+    """
+    key_to_attr: dict[IndicatorKey, str] = {}
+    for i, (key, term) in enumerate(terms.items()):
+        spec = ALL_INDICATORS[term.name]
+        price_args = [getattr(strategy.data, _FIELD_TO_ATTR[field]).s for field in spec.inputs]
+
+        def _compute(*args, _spec=spec, _name=term.name, **kwargs):
+            result = _spec.fn(*args, **kwargs)
+            if result is None:
+                raise ValueError(
+                    f"{_name}: pandas-ta returned None — check inputs "
+                    f"(e.g. a required DatetimeIndex)"
+                )
+            try:
+                return select_output_column(result, _spec.column_prefix)
+            except ValueError as e:
+                raise ValueError(f"{_name}: {e}") from e
+
+        attr_name = f"_ind_{i}"
+        setattr(strategy, attr_name, strategy.I(_compute, *price_args, **normalize_params(term.params)))
+        key_to_attr[key] = attr_name
+    return key_to_attr
+
+
+def apply_exit(strategy: Strategy, rule: StrategyRule, ctx: BarContext) -> None:
+    """Close strategy's position if rule's exit condition or exit_after_bars fires.
+
+    No-op if not currently in a position — callers are expected to check that first
+    (entry logic is each strategy's own concern; this is only ever the shared half).
+    """
+    if rule.exit is not None and evaluate_condition(rule.exit, ctx):
+        strategy.position.close()
+        return
+
+    if rule.exit_after_bars is not None and strategy.trades:
+        bars_held = (len(strategy.data) - 1) - strategy.trades[-1].entry_bar
+        if bars_held >= rule.exit_after_bars:
+            strategy.position.close()
+
+
 def make_rule_strategy(rule: StrategyRule) -> type[Strategy]:
     entry_terms = _collect_indicator_terms(rule.entry)
     exit_terms = _collect_indicator_terms(rule.exit) if rule.exit is not None else []
-
-    unique_terms: dict[IndicatorKey, IndicatorTerm] = {}
-    for term in entry_terms + exit_terms:
-        unique_terms.setdefault(indicator_key(term), term)
-
-    used_names = {term.name for term in unique_terms.values()}
-    indicators_used = sorted(n for n in used_names if ALL_INDICATORS[n].tier == "core")
-    extended_indicators_used = sorted(n for n in used_names if ALL_INDICATORS[n].tier == "extended")
+    terms = unique_terms(entry_terms, exit_terms)
+    indicators_used, extended_indicators_used = indicator_usage(terms)
 
     class RuleStrategy(Strategy):
         def init(self) -> None:
-            self._key_to_attr: dict[IndicatorKey, str] = {}
-            for i, (key, term) in enumerate(unique_terms.items()):
-                spec = ALL_INDICATORS[term.name]
-                price_args = [getattr(self.data, _FIELD_TO_ATTR[field]).s for field in spec.inputs]
-
-                def _compute(*args, _spec=spec, _name=term.name, **kwargs):
-                    result = _spec.fn(*args, **kwargs)
-                    if result is None:
-                        raise ValueError(
-                            f"{_name}: pandas-ta returned None — check inputs "
-                            f"(e.g. a required DatetimeIndex)"
-                        )
-                    try:
-                        return select_output_column(result, _spec.column_prefix)
-                    except ValueError as e:
-                        raise ValueError(f"{_name}: {e}") from e
-
-                attr_name = f"_ind_{i}"
-                setattr(self, attr_name, self.I(_compute, *price_args, **normalize_params(term.params)))
-                self._key_to_attr[key] = attr_name
-
+            self._key_to_attr = wire_indicators(self, terms)
             self._ctx: BarContext = _RuleBarContext(self)
 
         def next(self) -> None:
@@ -121,15 +158,7 @@ def make_rule_strategy(rule: StrategyRule) -> type[Strategy]:
                 if evaluate_condition(rule.entry, self._ctx):
                     self.buy()
                 return
-
-            if rule.exit is not None and evaluate_condition(rule.exit, self._ctx):
-                self.position.close()
-                return
-
-            if rule.exit_after_bars is not None and self.trades:
-                bars_held = (len(self.data) - 1) - self.trades[-1].entry_bar
-                if bars_held >= rule.exit_after_bars:
-                    self.position.close()
+            apply_exit(self, rule, self._ctx)
 
     RuleStrategy.__name__ = f"RuleStrategy_{rule.name}"
     RuleStrategy.__qualname__ = RuleStrategy.__name__
