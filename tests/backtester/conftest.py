@@ -1,42 +1,15 @@
 """Shared fixtures for backtester tests.
 
-Reuses the test_engine and db_session fixtures from tests/data_pipeline/conftest.py
-via pytest's conftest inheritance (pytest looks up the fixture chain automatically).
-
-Also provides make_synthetic_data — a deterministic price series used in gate tests.
+Reuses the test_engine and db_session fixtures from tests/data_pipeline/conftest.py,
+and make_synthetic_data/synthetic_data from the root tests/conftest.py, via pytest's
+conftest inheritance (pytest looks up the fixture chain automatically).
 """
 from datetime import datetime, timezone
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from data_pipeline.ingest.upsert import upsert_price_bars
-
-
-def make_synthetic_data(n_bars: int = 500, seed: int = 42) -> pd.DataFrame:
-    """Return a realistic-looking OHLCV DataFrame with a DatetimeIndex.
-
-    Uses a seeded random walk so results are deterministic across runs.
-    Returned shape matches both what upsert_price_bars expects (adj_* columns,
-    index named 'date') AND what backtesting.py expects (Open/High/Low/Close/Volume,
-    index named 'Date') — callers pick the right column names for their context.
-    """
-    rng = np.random.default_rng(seed)
-    daily_returns = rng.normal(0.0005, 0.012, n_bars)
-    close = 100.0 * np.exp(np.cumsum(daily_returns))
-
-    dates = pd.bdate_range("2020-01-01", periods=n_bars)
-    return pd.DataFrame(
-        {
-            "Open":   close * rng.uniform(0.997, 1.000, n_bars),
-            "High":   close * rng.uniform(1.000, 1.010, n_bars),
-            "Low":    close * rng.uniform(0.990, 1.000, n_bars),
-            "Close":  close,
-            "Volume": (rng.integers(500_000, 2_000_000, n_bars)).astype(float),
-        },
-        index=pd.DatetimeIndex(dates, name="Date"),
-    )
 
 
 def synthetic_to_db_df(bt_df: pd.DataFrame) -> pd.DataFrame:
@@ -59,12 +32,6 @@ def synthetic_to_db_df(bt_df: pd.DataFrame) -> pd.DataFrame:
     )
     db_df.index.name = "date"
     return db_df
-
-
-@pytest.fixture
-def synthetic_data():
-    """The canonical 500-bar synthetic dataset used across gate tests."""
-    return make_synthetic_data()
 
 
 @pytest.fixture

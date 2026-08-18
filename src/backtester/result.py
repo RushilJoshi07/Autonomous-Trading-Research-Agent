@@ -17,6 +17,7 @@ class BacktestResult(BaseModel):
     indicators_used: list[str] = Field(default_factory=list)
     extended_indicators_used: list[str] = Field(default_factory=list)
     trade_returns: list[float] = Field(default_factory=list)
+    exit_bars: list[int] = Field(default_factory=list)
 
     @classmethod
     def from_stats(
@@ -37,6 +38,7 @@ class BacktestResult(BaseModel):
 
         trades = stats.get("_trades")
         trade_returns = trades["ReturnPct"].tolist() if trades is not None else []
+        exit_bars = trades["ExitBar"].tolist() if trades is not None else []
 
         return cls(
             ticker=ticker,
@@ -52,4 +54,5 @@ class BacktestResult(BaseModel):
             indicators_used=indicators_used,
             extended_indicators_used=extended_indicators_used,
             trade_returns=trade_returns,
+            exit_bars=exit_bars,
         )

@@ -20,7 +20,7 @@ from backtesting.lib import crossover
 
 from backtester.engine import run_backtest
 from backtester.strategies.sma_crossover import SMACrossover
-from tests.backtester.conftest import make_synthetic_data
+from tests.conftest import make_synthetic_data
 
 
 # ---------------------------------------------------------------------------

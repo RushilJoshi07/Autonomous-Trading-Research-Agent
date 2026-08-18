@@ -5,12 +5,23 @@ this component (kept exactly as-is, per the Stage 3 handoff document), plus the
 plan §8 formal suite: each KNOWN_STRATEGY compiles and runs, positive offset
 raises through the whole compiled pipeline (not just the evaluator in isolation),
 and indicator dedup holds across a real KNOWN_STRATEGIES rule.
+
+Stage 4 Component 8 adds direct coverage for unique_terms and indicator_usage,
+the two small pure helpers Component 6 extracted from this file so
+random_entry_strategy.py could share them. wire_indicators and apply_exit (the
+other two extracted helpers) are NOT given isolated tests here — both are
+already exercised, repeatedly, by every test below that compiles and runs a
+real strategy through make_rule_strategy, plus every test in
+test_random_entry_strategy.py that does the same through
+make_random_entry_strategy. An isolated call against a stub Strategy object
+would be less meaningful coverage than what already exists.
 """
 
 import pytest
 
 from backtester.engine import run_backtest
 from backtester.evaluator import indicator_key
+from backtester.registry import ALL_INDICATORS
 from backtester.schema import (
     KNOWN_STRATEGIES,
     Comparison,
@@ -20,7 +31,12 @@ from backtester.schema import (
     PriceTerm,
     StrategyRule,
 )
-from backtester.strategies.rule_strategy import _collect_indicator_terms, make_rule_strategy
+from backtester.strategies.rule_strategy import (
+    _collect_indicator_terms,
+    indicator_usage,
+    make_rule_strategy,
+    unique_terms,
+)
 
 
 def _leaf(left, op, right) -> Condition:
@@ -155,3 +171,54 @@ def test_sma_crossover_dedups_to_two_unique_indicators():
     unique_keys = {indicator_key(t) for t in all_terms}
     assert len(all_terms) == 4
     assert len(unique_keys) == 2
+
+
+def test_unique_terms_dedups_across_multiple_lists():
+    """unique_terms takes *term_lists (variadic) specifically so
+    make_random_entry_strategy can pass just exit_terms alone, with nothing
+    to concatenate -- this checks the multi-list dedup itself, independent
+    of which strategy-compiling function calls it."""
+    sma10 = IndicatorTerm(name="SMA", params={"length": 10})
+    sma10_again = IndicatorTerm(name="SMA", params={"length": 10})
+    sma30 = IndicatorTerm(name="SMA", params={"length": 30})
+
+    result = unique_terms([sma10, sma30], [sma10_again])
+
+    assert len(result) == 2
+    assert indicator_key(sma10) in result
+    assert indicator_key(sma30) in result
+    # first occurrence wins: the dict holds the FIRST sma10 instance seen,
+    # not the second (sma10_again) -- checked by identity, not just equality,
+    # since two separately-constructed IndicatorTerms with identical fields
+    # would compare equal either way.
+    assert result[indicator_key(sma10)] is sma10
+
+
+def test_unique_terms_empty_input_gives_empty_map():
+    assert unique_terms([]) == {}
+    assert unique_terms() == {}
+
+
+def test_indicator_usage_splits_core_and_extended():
+    """SMA is core-tier; find one real VERIFIED extended-tier entry from the
+    registry itself (not hand-assumed) to prove the split reads
+    ALL_INDICATORS.tier correctly rather than always returning everything as
+    core. Must be verified=True, not just tier="extended" -- IndicatorTerm's
+    own constructor refuses any unverified indicator regardless of what this
+    test is trying to check, so an unverified pick would fail before
+    indicator_usage is ever reached."""
+    extended_name = next(
+        name for name, spec in ALL_INDICATORS.items() if spec.tier == "extended" and spec.verified
+    )
+    core_term = IndicatorTerm(name="SMA", params={"length": 10})
+    extended_term = IndicatorTerm(name=extended_name, params={})
+    terms = unique_terms([core_term, extended_term])
+
+    core_used, extended_used = indicator_usage(terms)
+
+    assert core_used == ["SMA"]
+    assert extended_used == [extended_name]
+
+
+def test_indicator_usage_empty_terms_gives_empty_lists():
+    assert indicator_usage({}) == ([], [])

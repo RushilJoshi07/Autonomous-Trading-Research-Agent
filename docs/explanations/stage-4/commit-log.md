@@ -195,3 +195,51 @@ volatility roughly doubling AND the ranking itself shifting (INTC fell
 from 1st to 3rd; AAPL and MSFT swapped relative order) — real evidence
 `as_of` does load-bearing work, not unused plumbing. Full 170-test suite
 confirmed unchanged.
+
+---
+
+## Stage 4 component 8: formal test suite
+
+**Change:** Added automated pytest coverage for all six Stage 4 tools
+(220 tests total, up from 170). While writing a real test for Component
+6's trade-count calibration claim, found the claim was substantively
+broken, not just imprecise: `entry_prob = n_trades / len(data)` saturates
+well below its target for any rule with a data-dependent `rule.exit`
+condition (measured: target 80 → mean realized 10.9, ratio 0.14),
+because such a condition only fires at a sparse, fixed set of historical
+bars, and no entry probability can produce more trades than there are
+such bars to close at. Investigated the real mechanism directly (raw
+exit-signal calendar: only 10 events in 500 bars) before designing any
+fix, per explicit instruction.
+
+Fixed structurally, not by tuning the probability: added
+`BacktestResult.exit_bars` (a third provenance field, same pattern as
+`indicators_used`/`trade_returns`) and a new
+`make_anchored_random_entry_strategy`, which pairs one randomized entry
+with each of the real strategy's own historical exit bars, guaranteeing
+the trade count by construction — except a documented, tested tight-gap
+exception where two real exits are too close together to fit a valid
+entry window, in which case that anchor is skipped rather than forced.
+`test_significance` now dispatches between the anchored approach
+(`rule.exit is not None`) and the original probability approach
+(`exit_after_bars`-only rules, confirmed never actually broken for this
+case) automatically. Added `null_mean_trades`/`null_std_trades` to
+`SignificanceResult` so the guarantee is empirically visible per call,
+not just asserted.
+
+What is non-obvious: the fix changes `test_significance`'s actual
+reported conclusion, not just its precision — re-run against the same
+real AAPL/`sma_10_30_crossover` case Component 6's own verification used,
+the corrected p-value is ≈0.0099 (significant), against the original,
+now-superseded ≈0.33 (not significant). Added a prominent addendum to
+`step-06-statistics-tool.md` documenting this. Also fixed two unrelated
+test-infrastructure issues found along the way: `synthetic_data` moved
+from `tests/backtester/conftest.py` to the root `tests/conftest.py`
+(pytest's fixture inheritance doesn't flow between sibling packages, and
+the new `tests/research_stats/` needed it too), and a pytest
+name-collision from importing a function literally called
+`test_significance` into a test file (aliased on import). Full trail:
+`docs/explanations/stage-4/step-08-formal-test-suite.md`. All 220 tests
+pass; the anchored fix verified twice — synthetic data (exact trade-count
+match) and real AAPL data through the actual MCP protocol handler
+(`null_mean_trades: 43.99` against `observed_num_trades: 44`).

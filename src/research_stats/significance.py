@@ -18,7 +18,10 @@ from scipy.stats import monte_carlo_test
 
 from backtester.engine import run_backtest
 from backtester.schema import StrategyRule
-from backtester.strategies.random_entry_strategy import make_random_entry_strategy
+from backtester.strategies.random_entry_strategy import (
+    make_anchored_random_entry_strategy,
+    make_random_entry_strategy,
+)
 from backtester.strategies.rule_strategy import make_rule_strategy
 
 _DEFAULT_N_RESAMPLES = 300
@@ -32,6 +35,8 @@ class SignificanceResult(BaseModel):
     n_resamples: int
     null_mean_sharpe: float
     null_std_sharpe: float
+    null_mean_trades: float
+    null_std_trades: float
 
 
 def test_significance(
@@ -44,12 +49,28 @@ def test_significance(
     seed: int = 0,
 ) -> SignificanceResult:
     """Test whether rule's real Sharpe ratio beats n_resamples randomized-entry
-    controls matched on exit logic and approximate trade frequency.
+    controls matched on exit logic and trade frequency.
+
+    Controls are generated one of two ways depending on rule's own shape,
+    picked automatically:
+
+    - rule.exit is not None (a data-dependent exit condition): anchored
+      controls (make_anchored_random_entry_strategy), one randomized entry
+      paired with each of the real strategy's own historical exit bars.
+      Chosen after confirming directly (Stage 4 Component 8) that the
+      simpler probability-based approach SATURATES well below the intended
+      trade count for this case — rule.exit fires at a sparse, fixed set of
+      historical bars, and no amount of entry probability can produce more
+      trades than there are such bars to close them at.
+    - rule.exit is None (exit_after_bars only): probability-based controls
+      (make_random_entry_strategy) — correct here, since a fixed-length
+      exit has no sparse calendar to saturate against.
 
     Raises ValueError if the real strategy produces 0 trades (no basis for a
     frequency-matched comparison) or if a random-entry control can't produce a
     single trade within _MAX_RETRIES_PER_DRAW attempts (observed_num_trades is
-    likely too low relative to the data length for this to be meaningful).
+    likely too low relative to the data length for this to be meaningful, or
+    every anchor's historical gap was too short to fit a valid entry).
     """
     kwargs: dict[str, float] = {}
     if commission is not None:
@@ -64,6 +85,11 @@ def test_significance(
             "data — no basis for a randomized-entry comparison"
         )
 
+    def make_control(seed_value: int) -> type:
+        if rule.exit is not None:
+            return make_anchored_random_entry_strategy(rule, observed.exit_bars, seed=seed_value)
+        return make_random_entry_strategy(rule, observed.num_trades, seed=seed_value)
+
     def rvs(size: tuple[int, ...] | int) -> np.ndarray:
         # monte_carlo_test calls this with size as a tuple (n_resamples, sample_length)
         # matching data's shape — data=[observed.sharpe_ratio] has length 1, so this is
@@ -71,10 +97,11 @@ def test_significance(
         # assumed from the docstring's `rvs(size=(m, n))` example.
         n = size[0] if isinstance(size, tuple) else size
         sharpes = np.empty(n)
+        trade_counts[:] = []  # reset across repeated rvs calls within one monte_carlo_test run
         next_seed = seed
         for i in range(n):
             for attempt in range(_MAX_RETRIES_PER_DRAW):
-                control_cls = make_random_entry_strategy(rule, observed.num_trades, seed=next_seed)
+                control_cls = make_control(next_seed)
                 next_seed += 1
                 control = run_backtest(price_data, control_cls, ticker=ticker, **kwargs)
                 if control.num_trades > 0:
@@ -83,11 +110,14 @@ def test_significance(
                 raise ValueError(
                     f"random-entry control produced 0 trades in {_MAX_RETRIES_PER_DRAW} "
                     f"consecutive attempts (observed_num_trades={observed.num_trades} may be "
-                    "too low relative to the data length)"
+                    "too low relative to the data length, or every historical exit gap was "
+                    "too short to fit a valid anchored entry)"
                 )
             sharpes[i] = control.sharpe_ratio
+            trade_counts.append(control.num_trades)
         return sharpes.reshape(size)
 
+    trade_counts: list[int] = []
     mc = monte_carlo_test(
         data=[observed.sharpe_ratio],
         rvs=rvs,
@@ -104,4 +134,6 @@ def test_significance(
         n_resamples=n_resamples,
         null_mean_sharpe=float(np.mean(null_dist)),
         null_std_sharpe=float(np.std(null_dist)),
+        null_mean_trades=float(np.mean(trade_counts)),
+        null_std_trades=float(np.std(trade_counts)),
     )

@@ -1,5 +1,28 @@
 # Step 6 — Statistics Tool (Stage 4)
 
+> **Addendum (Component 8, same stage):** the entry-probability calibration
+> this document describes below (`entry_prob = n_trades / len(data)`) was
+> found to be substantively broken while writing Component 8's formal test
+> suite — not just imprecise, but capable of producing the *wrong
+> statistical conclusion*. Measured directly: for `sma_10_30_crossover`
+> against real AAPL data (this component's own verification case), the
+> broken calibration's null distribution averaged a Sharpe of ~0.58,
+> against the observed 0.678, giving p≈0.33 ("not significant"). The
+> corrected calibration — described in
+> `docs/explanations/stage-4/step-08-formal-test-suite.md`, which replaces
+> the probability-based approach with one anchored to the real strategy's
+> own historical exit bars for any rule with a data-dependent `rule.exit`
+> — gives a null distribution averaging Sharpe ~0.27, and p≈0.0099
+> ("significant at the 1% level"). Every claim below describing the
+> probability-based approach as this tool's mechanism for `rule.exit is not
+> None` rules is now historical, not current; `test_significance` still
+> uses the mechanism described here for `exit_after_bars`-only rules, where
+> it was confirmed to remain correct. Left unedited below rather than
+> rewritten, so the record of what was actually built, tested, and
+> approved at this point in the stage stays intact — the correction is
+> documented in full, including the mechanism that caused it, in Component
+> 8's own step file.
+
 ## 1. What this does
 
 This is the largest component in Stage 4, and the first to genuinely
