@@ -160,3 +160,38 @@ error paths (zero real trades, too-few-trades CI) verified, one requiring
 a deliberately-constructed impossible rule to actually reach. Full
 170-test suite confirmed unchanged (checked after the refactor alone and
 after the full component).
+
+---
+
+## Stage 4 component 7: screener tool
+
+**Change:** Last of the six planned tools. Discovered (not caused) that
+only `AAPL` among the original 17-ticker `universe.py` list had ever
+actually been ingested — the other 16 had zero rows, zero metadata, zero
+run history. Flagged immediately; with the user's go-ahead, ingested 37
+new tickers plus the 16 missing originals through the existing Stage 1
+path (0 failures), bringing the real total to 54. Rewrote `universe.py`
+from a static list to `all_tickers(session)`, a live `TickerMetadata`
+query; updated `cli.py` (the standing nightly-refresh entry point) to use
+it. Added `data_pipeline/screener.py` (`screen`: sector/industry filters
+via SQL, liquidity/volatility ranked by percentile within the matched
+group, `_MIN_OBSERVATIONS`-gated exclusion) and the `screen_universe` MCP
+tool.
+
+What is non-obvious: the screener's central design point is point-in-time
+correctness via `as_of` — a `date <= as_of` filter and a row-count
+`LIMIT` (not a calendar-day estimate), the same discipline as Component
+5's `classify_regime`, one layer up at universe selection instead of
+per-bar. Sector/industry metadata is explicitly *not* point-in-time
+(`TickerMetadata` has no history) — disclosed, not hidden, same pattern
+as the survivorship-bias gap. Simplified the response mid-design: dropped
+six planned boolean quintile/tercile/decile flags in favor of just the
+raw percentile, since the full ranked group already makes every cut
+recoverable. Full trail:
+`docs/explanations/stage-4/step-07-screener-tool.md`. Verified end-to-end,
+including the specific proof requested: Technology-sector volatility
+during the COVID crash vs. a calm 2024 period showed every ticker's
+volatility roughly doubling AND the ranking itself shifting (INTC fell
+from 1st to 3rd; AAPL and MSFT swapped relative order) — real evidence
+`as_of` does load-bearing work, not unused plumbing. Full 170-test suite
+confirmed unchanged.

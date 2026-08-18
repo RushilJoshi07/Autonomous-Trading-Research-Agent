@@ -1,22 +1,20 @@
-# Stage 1 universe: a small hand-picked list used during development.
-# This is NOT point-in-time — it reflects today's listings only.
-# Delisted and bankrupt names are excluded, which means results are subject to
-# survivorship bias. See docs/architecture.md section 6 for the full discussion.
-# The screener tool (Stage 4) will replace this list.
+# Stage 4: replaces Stage 1's hand-picked static list (git history for the
+# original 17-ticker version). The actual universe is now whatever's been
+# ingested into TickerMetadata — it grows automatically as tickers are added
+# (via the screener's own one-time broadening, or later manual ingestion),
+# rather than requiring this file to be hand-edited every time.
+#
+# Still NOT point-in-time — reflects today's ingested set only. Delisted and
+# bankrupt names remain excluded, so results are subject to survivorship bias.
+# See docs/architecture.md section 6 for the full discussion.
 
-TICKERS: list[str] = [
-    # Large-cap tech
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    # Financials
-    "JPM", "BAC", "GS",
-    # Energy
-    "XOM", "CVX",
-    # Healthcare
-    "JNJ", "UNH",
-    # Consumer
-    "WMT", "PG",
-    # Small/mid cap (to exercise edge cases in fetcher)
-    "CROX", "BROS",
-    # ETF (tests nullable sector/industry in metadata)
-    "SPY",
-]
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .db.models import TickerMetadata
+
+
+def all_tickers(session: Session) -> list[str]:
+    """Every ticker with metadata currently ingested, sorted."""
+    rows = session.execute(select(TickerMetadata.ticker)).scalars().all()
+    return sorted(rows)

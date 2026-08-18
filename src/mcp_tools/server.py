@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 import pandas as pd
 from mcp.server import MCPServer
@@ -12,6 +13,8 @@ from backtester.result import BacktestResult
 from backtester.schema import StrategyRule
 from backtester.strategies.rule_strategy import make_rule_strategy
 from data_pipeline.db.session import SessionFactory
+from data_pipeline.screener import ScreenerResult
+from data_pipeline.screener import screen as _screen
 from mcp_tools.schemas import IndicatorInfo, IndicatorValueOut, PriceBarOut, RegimeRecordOut
 from research_stats.confidence import ConfidenceIntervalResult
 from research_stats.confidence import bootstrap_ci as _bootstrap_ci
@@ -156,6 +159,19 @@ def confidence_interval(
 def correct_p_values(p_values: list[float], method: str = "bh") -> MultipleComparisonsResult:
     """Adjust a list of p-values for multiple comparisons (Benjamini-Hochberg by default)."""
     return _correct_p_values(p_values, method=method)
+
+
+@mcp.tool()
+def screen_universe(
+    sector: str | None = None,
+    industry: str | None = None,
+    metric: Literal["liquidity", "volatility"] = "liquidity",
+    lookback_days: int = 63,
+    as_of: date | None = None,
+) -> ScreenerResult:
+    """Rank tickers by relative liquidity or volatility percentile within a sector/industry group, computed only from data as of a given date (point-in-time — no lookahead into universe selection)."""
+    with SessionFactory() as session:
+        return _screen(session, sector=sector, industry=industry, metric=metric, lookback_days=lookback_days, as_of=as_of)
 
 
 if __name__ == "__main__":

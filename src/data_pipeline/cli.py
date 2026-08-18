@@ -7,8 +7,9 @@ Usage:
 """
 import sys
 
+from data_pipeline.db.session import SessionFactory
 from data_pipeline.ingest.runner import check_corporate_actions, full_refetch, ingest_daily
-from data_pipeline.universe import TICKERS
+from data_pipeline.universe import all_tickers
 
 
 def main() -> None:
@@ -18,14 +19,17 @@ def main() -> None:
 
     command = sys.argv[1]
 
+    with SessionFactory() as session:
+        tickers = all_tickers(session)
+
     if command == "ingest":
-        run_id = ingest_daily(TICKERS)
+        run_id = ingest_daily(tickers)
         print(f"Ingest complete. run_id={run_id}")
     elif command == "refetch":
-        run_id = full_refetch(TICKERS)
+        run_id = full_refetch(tickers)
         print(f"Full refetch complete. run_id={run_id}")
     elif command == "check-actions":
-        check_corporate_actions(TICKERS)
+        check_corporate_actions(tickers)
         print("Corporate action check complete.")
     else:
         print(f"Unknown command: {command}")
