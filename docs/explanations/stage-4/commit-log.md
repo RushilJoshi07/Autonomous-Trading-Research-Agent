@@ -243,3 +243,33 @@ name-collision from importing a function literally called
 pass; the anchored fix verified twice — synthetic data (exact trade-count
 match) and real AAPL data through the actual MCP protocol handler
 (`null_mean_trades: 43.99` against `observed_num_trades: 44`).
+
+---
+
+## Stage 4 component 9: manual MCP verification (the stage gate)
+
+**Change:** Added `scripts/verify_stage4_gate.py`, the literal Stage 4
+gate per `docs/architecture.md` ("call each manually through MCP before
+any agent touches them"). Unlike every prior component's own interactive
+checks (all done via `MCPServer._handle_call_tool()` in-process), this
+launches `mcp_tools.server` as a real subprocess and drives it with the
+actual client SDK (`ClientSession`, `stdio_client`) over real stdio —
+the first and only place in Stage 4 that exercises the real transport a
+future agent will actually use, not just the tool logic underneath it.
+17 checks across all 9 registered tool functions, happy path and invalid
+input alike. Result: 17/17 passed, exit code 0.
+
+What is non-obvious: confirmed by direct testing, not assumed, that the
+client-side `CallToolResult` uses the identical `is_error`/
+`structured_content` snake_case naming as the server-side object already
+found in earlier components (it's literally the same class on both
+sides) — and that launching the subprocess needs only `cwd` pointing at
+the project root (for `.env` discovery), not the `PYTHONPATH` override
+first assumed necessary, since the project's editable install already
+makes everything importable from anywhere. Full trail:
+`docs/explanations/stage-4/step-09-manual-mcp-verification.md`.
+
+**Stage 4 is complete.** All six planned tools exist, are individually
+tested (Component 8, 220 tests), and are now confirmed reachable through
+the real MCP protocol (this component). A separate Level-3
+`stage-4-summary.md` follows as its own next step.
