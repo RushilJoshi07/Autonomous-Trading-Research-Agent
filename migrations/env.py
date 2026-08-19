@@ -7,6 +7,7 @@ from alembic import context
 
 from data_pipeline.config import settings
 from data_pipeline.db.models import Base
+import agentic_core.db.models  # noqa: F401 -- registers Stage 5's tables onto the same Base.metadata
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

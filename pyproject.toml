@@ -19,6 +19,14 @@ dependencies = [
     "alembic>=1.13",
     "mcp>=1.0",
     "scipy>=1.11",
+    "langgraph>=0.2",
+    "sentence-transformers>=3.0",
+    "pypdf>=5.0",
+    "langchain-text-splitters>=0.3",
+    "arxiv>=2.1",
+    "pgvector>=0.3",
+    "tavily-python>=0.5",
+    "langsmith>=0.1",
 ]
 
 [project.optional-dependencies]

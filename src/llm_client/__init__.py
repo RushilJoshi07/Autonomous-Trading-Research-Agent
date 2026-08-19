@@ -28,6 +28,7 @@ from typing import TypeVar
 
 from anthropic import AnthropicBedrock
 from anthropic.types import Message
+from langsmith import traceable
 from pydantic import BaseModel, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
@@ -52,6 +53,7 @@ class StructuredOutputError(Exception):
         self.raw_response = raw_response
 
 
+@traceable(run_type="llm", name="structured_output")
 def structured_output(
     prompt: str,
     response_model: type[T],

@@ -141,6 +141,38 @@ anything is broken; this step only needs to run once, on a genuinely fresh
 setup. (Confirmed empirically, 2026-08-14: a scratch database created twice
 in a row behaved exactly this way.)
 
+On Postgres **17 or 18**, also run `brew install pgvector` here — Homebrew's
+bottle covers those versions and this is all you need. On Postgres **16**
+(this machine, confirmed via `pg_config --version`), Homebrew's pgvector
+bottle installs successfully but ships extension files only for 17/18 —
+`CREATE EXTENSION vector` fails afterward with no earlier warning that
+anything was wrong. Build from source against your actual Postgres instead:
+```bash
+git clone --branch v0.8.6 --depth 1 https://github.com/pgvector/pgvector.git
+cd pgvector
+make PG_CONFIG=/opt/homebrew/opt/postgresql@16/bin/pg_config
+make install PG_CONFIG=/opt/homebrew/opt/postgresql@16/bin/pg_config
+cd .. && rm -rf pgvector
+```
+Substitute your own `pg_config` path if not on Homebrew's `postgresql@16`.
+This extension is now outside Homebrew's management — `brew upgrade` won't
+touch it, and re-running these commands is how to update it later. (Root
+cause confirmed empirically, 2026-08-19: `Cellar/pgvector/0.8.6/share/`
+contained only `postgresql@17` and `postgresql@18` subdirectories, nothing
+for 16; full account in
+`docs/explanations/stage-5/step-01-dependencies-schema-tracing.md`.)
+
+Either way, enable the extension per-database — building or installing it
+only makes it *available*, it still has to be turned on in each database:
+```bash
+psql -d strategy_research -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql -d strategy_research_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+This has to happen before the next step below: `Base.metadata.create_all()`
+only issues `CREATE TABLE`, never `CREATE EXTENSION` — it has no mechanism
+for arbitrary DDL — so `corpus_chunks`' `vector(384)` column will fail to
+create if the extension isn't already enabled first.
+
 ```bash
 python -m data_pipeline.db.init_db
 ```

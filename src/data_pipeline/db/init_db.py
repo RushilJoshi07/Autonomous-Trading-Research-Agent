@@ -2,6 +2,7 @@ from sqlalchemy import Engine
 
 from data_pipeline.db.models import Base
 from data_pipeline.db.session import get_engine
+import agentic_core.db.models  # noqa: F401 -- registers Stage 5's tables onto the same Base.metadata
 
 
 def create_schema(engine: Engine) -> None:
