@@ -192,6 +192,17 @@ def embed_query(query: str) -> list[float]:
     return model.encode(_QUERY_INSTRUCTION + query, normalize_embeddings=True).tolist()
 
 
+def embed_passage(text: str) -> list[float]:
+    """No instruction prefix -- passages are embedded plain, per bge-small-
+    en-v1.5's asymmetric convention (see this module's own docstring).
+    A single-text counterpart to ingest_paper's own batched
+    model.encode(chunks, ...) call, for callers (tests, mainly) that need to
+    embed one known piece of text the exact same way a real chunk would be.
+    """
+    model = _get_embedding_model()
+    return model.encode(text, normalize_embeddings=True).tolist()
+
+
 def retrieve_local(query: str, top_k: int = 5) -> list[dict]:
     """Cosine similarity via pgvector's <=> operator (1 - cosine_similarity,
     so ascending order = most similar first). A plain sequential scan --

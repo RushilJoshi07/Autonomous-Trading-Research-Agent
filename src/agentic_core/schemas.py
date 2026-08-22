@@ -85,3 +85,32 @@ class Charter(BaseModel):
     resolved_universe: list[str]
     screening_as_of: date
     screening_group_size: int  # disclosure: how many tickers matched sector/industry before the cut
+
+
+class GroundingChunk(BaseModel):
+    """One retrieved piece of evidence, from either tier -- a unified shape
+    so Component 4 can build a hypothesis's citations the same way
+    regardless of which tier actually fired. paper_id is only ever set for
+    local_corpus (Tier 1 knows exactly which curated paper a chunk came
+    from); url is only ever set for whitelist_search (Tier 2 is live web
+    search, with no curated paper_id to point at). relevance is comparable
+    within a tier, not necessarily across tiers -- see ground_topic's own
+    module docstring for why.
+    """
+
+    source: Literal["local_corpus", "whitelist_search"]
+    title: str
+    text: str
+    relevance: float
+    paper_id: str | None = None
+    url: str | None = None
+
+
+class GroundingResult(BaseModel):
+    """What ground_topic returns -- tier is the mechanical escalation
+    outcome (docs/architecture.md: "Escalation is MECHANICAL... never a
+    subjective LLM judgment"), chunks is empty exactly when tier == "none".
+    """
+
+    tier: Literal["local_corpus", "whitelist_search", "none"]
+    chunks: list[GroundingChunk]

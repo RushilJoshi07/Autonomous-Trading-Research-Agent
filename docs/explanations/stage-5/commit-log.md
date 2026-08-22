@@ -99,3 +99,35 @@ entries, not the 14 originally stated — a real third mean-reversion
 paper (`da_liu_schaumburg_reversal`, `year: null`) accounts for the
 difference; whether that's intentional is the user's call, still open.
 Full trail: `docs/explanations/stage-5/step-03-tier1-corpus.md`.
+
+---
+
+## Stage 5 component 3 (part 2): Tier-2 whitelist search and mechanical escalation
+
+**Change:** `agentic_core/grounding.py` — `retrieve_whitelist` (Tavily,
+domain-restricted to ssrn.com/papers.ssrn.com/nber.org/arxiv.org/
+federalreserve.gov) and `ground_topic`, the mechanical escalation across
+all three tiers, no LLM judgment anywhere in it. `GroundingChunk`/
+`GroundingResult` added to `schemas.py`. New
+`tests/agentic_core/test_grounding.py` — first formal regression test in
+the new `tests/agentic_core/` package.
+
+**Non-obvious:** a real adversarial test (not a confirming one) found a
+genuine false positive — "January effect seasonality..." scored 0.782 via
+`retrieve_local` against a Fama & French *value* chunk that genuinely
+discusses the January effect as a caveat, wrong paper as primary grounding
+despite real chunk-level topical overlap. 0.782 sits inside the 0.77-0.85
+range of three previously-confirmed-correct matches, so no threshold
+between those numbers cleanly separates true from false positive.
+`LOCAL_RELEVANCE_THRESHOLD` raised 0.5 -> 0.90, deliberately conservative
+given the asymmetric costs (wrong-paper citation vs. one extra cheap
+Tavily call) — documented as PROVISIONAL directly in code, with the exact
+calibration gap and revisit trigger named in the comment itself, not left
+to memory. `WHITELIST_RELEVANCE_THRESHOLD` deliberately left unchanged —
+no adversarial evidence exists against it yet, and raising it in sympathy
+would be the same unfounded-tightening mistake in the other direction.
+Also: a claimed NY Fed precedent for the Tier-2 domain list turned out not
+to exist in the real, committed `paper_list.json` or its git history —
+checked directly rather than assumed, kept the domain list at
+federalreserve.gov only, as designed. Full trail:
+`docs/explanations/stage-5/step-04-tier2-whitelist-and-escalation.md`.
