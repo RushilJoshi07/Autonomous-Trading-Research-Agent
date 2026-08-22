@@ -11,7 +11,9 @@ from datetime import date
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from backtester.schema import StrategyRule
 
 
 class EffectFamily(str, Enum):
@@ -114,3 +116,64 @@ class GroundingResult(BaseModel):
 
     tier: Literal["local_corpus", "whitelist_search", "none"]
     chunks: list[GroundingChunk]
+
+
+class FalsificationCondition(BaseModel):
+    """Pre-registered BEFORE any testing (.claude/rules/agent-honesty.md) --
+    deliberately single-clause, not a compound and/or tree the way entry/
+    exit conditions are: pre-registration integrity benefits from staying
+    simple, and a compound condition is exactly the kind of thing that could
+    quietly grow wiggle room later. metric's vocabulary is drawn directly
+    from BacktestResult's and SignificanceResult's real field names
+    (backtester/result.py, research_stats/significance.py) so Component 7
+    can mechanically evaluate this against whatever result object it
+    actually has, with no name mismatch possible.
+
+    This is the hypothesis's OWN pre-registered bar, separate from Component
+    7's multiple-comparisons-corrected significance threshold (which
+    adjusts for how many hypotheses have been tested under the charter, plus
+    a stricter multiplier for grounding: none) -- two different mechanisms
+    applied at two different points, not overlapping.
+    """
+
+    metric: Literal[
+        "sharpe_ratio", "annual_return_pct", "total_return_pct",
+        "max_drawdown_pct", "win_rate_pct", "p_value",
+    ]
+    comparison: Literal["less_than", "greater_than"]
+    threshold: float
+
+    @model_validator(mode="after")
+    def _check_p_value_range(self) -> "FalsificationCondition":
+        if self.metric == "p_value" and not (0.0 <= self.threshold <= 1.0):
+            raise ValueError(f"p_value threshold must be in [0, 1], got {self.threshold}")
+        return self
+
+
+class ParsedHypothesis(BaseModel):
+    """Exactly what llm_client.structured_output is asked to produce --
+    rule reuses Stage 3's StrategyRule as-is, which means its own
+    model_validators (real indicator, valid params, well-formed exit) fire
+    automatically the moment this whole object validates. No separate
+    executability check needed; Component 4 doesn't rebuild what Stage 3
+    already built.
+    """
+
+    rule: StrategyRule
+    prediction: str
+    falsification_condition: FalsificationCondition
+    rationale: str
+
+
+class Hypothesis(BaseModel):
+    """ParsedHypothesis plus what code alone resolves. citations and
+    grounding_tier are never fields the LLM is asked to fill in -- both
+    come directly from the same GroundingResult that grounded the prompt,
+    the same resolved_universe-style guarantee Charter already established:
+    there is no path by which a hallucinated or misremembered citation can
+    reach this object.
+    """
+
+    parsed: ParsedHypothesis
+    grounding_tier: Literal["local_corpus", "whitelist_search", "none"]
+    citations: list[GroundingChunk]

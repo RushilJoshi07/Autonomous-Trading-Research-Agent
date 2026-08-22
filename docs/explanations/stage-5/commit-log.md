@@ -131,3 +131,35 @@ to exist in the real, committed `paper_list.json` or its git history —
 checked directly rather than assumed, kept the domain list at
 federalreserve.gov only, as designed. Full trail:
 `docs/explanations/stage-5/step-04-tier2-whitelist-and-escalation.md`.
+
+---
+
+## Stage 5 component 4: hypothesis generation
+
+**Change:** `agentic_core/hypothesis.py` — `propose_hypothesis(charter_id,
+family)`: grounds a fixed per-family query (Component 3), calls
+`structured_output` for a `ParsedHypothesis` (rule/prediction/
+falsification_condition/rationale), assembles `citations`/`grounding_tier`
+from code, checks two guardrails (charter confirmed, family actually
+requested), dedups by exact rule hash, persists. New schemas in
+`schemas.py`: `FalsificationCondition` (single-clause, metric vocabulary
+drawn from `BacktestResult`/`SignificanceResult`'s real field names),
+`ParsedHypothesis`/`Hypothesis` (same LLM-produces/code-wraps split as
+Charter).
+
+**Non-obvious:** `StrategyRule`'s own Stage 3 validators (real indicator,
+valid params, well-formed exit) already satisfy architecture.md's "confirm
+the rule is executable" requirement, just by nesting `StrategyRule` inside
+`ParsedHypothesis` — no new executability check was needed. Exact-hash
+dedup (not fuzzy similarity) was a direct, deliberate response to
+Component 3's threshold lesson — a second uncalibrated similarity
+threshold here would risk the same mistake with even less data to check
+it against. Real end-to-end run against a real confirmed charter produced
+`grounding_tier='whitelist_search'` (not local) for a low-vol query —
+Component 3's conservative `0.90` threshold pushing a real query to Tier
+2, exactly as designed; Tavily found the correct paper anyway, including
+the exact NBER working paper already sitting in the local corpus. Dedup
+proven in both directions (a real repeat caught, a genuinely different
+rule not flagged) via direct hash verification, since natural LLM
+non-determinism made forcing a real collision impractical. Full trail:
+`docs/explanations/stage-5/step-05-hypothesis-generation.md`.
