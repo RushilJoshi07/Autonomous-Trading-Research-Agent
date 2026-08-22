@@ -38,12 +38,22 @@ class EffectFamily(str, Enum):
     SEASONALITY = "seasonality"
 
 
-CorpusEffectFamily = EffectFamily | Literal["methodology"]
+CorpusEffectFamily = EffectFamily | Literal["methodology", "liquidity"]
 """What a corpus paper (data/corpus/paper_list.json) can be tagged with --
-EffectFamily's six values plus "methodology" for papers like Harvey/Liu/Zhu
-that ground the agent's own statistical rigor rather than a specific effect.
-A distinct type from EffectFamily on purpose (see its docstring) rather than
-widening the charter-facing enum to include a value she should never see.
+EffectFamily's six values, plus "methodology" (papers like Harvey/Liu/Zhu
+and Bailey/Lopez de Prado that ground the agent's own statistical rigor
+rather than a specific effect) and "liquidity" (papers like Amihud (2002)
+that ground the SCREENER's liquidity metric -- UniverseFilter.metric,
+above -- not a hypothesis family a research mandate would investigate).
+
+"liquidity" specifically cannot be added to EffectFamily itself, even
+though it reads like a natural sixth-ish family: UniverseFilter.metric
+already uses the literal string "liquidity" for a completely different
+concept (which screener column a universe filter ranks tickers by). Two
+fields both called "liquidity" meaning two different things would be a
+real, confusing collision, not a cosmetic one -- keeping this corpus-only
+tag on CorpusEffectFamily, not EffectFamily, is what keeps that distinction
+intact everywhere else in the schema.
 """
 
 
