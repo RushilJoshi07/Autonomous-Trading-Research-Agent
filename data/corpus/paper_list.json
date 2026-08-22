@@ -1,0 +1,122 @@
+[
+  {
+    "id": "moskowitz_ooi_pedersen_2012",
+    "title": "Time Series Momentum",
+    "authors": "Moskowitz, T. J., Ooi, Y. H., & Pedersen, L. H.",
+    "year": 2012,
+    "source": "SSRN",
+    "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2089463",
+    "type": "academic_paper",
+    "effect_family": "momentum",
+    "grounds": ["sma_10_30_crossover"],
+    "note": "The single most-cited foundational paper on trend-following/time-series momentum. Directly grounds SMA(10/30) crossover."
+  },
+  {
+    "id": "da_liu_schaumburg_reversal",
+    "title": "A Closer Look at the Short-Term Return Reversal",
+    "authors": "Da, Z., Liu, Q., & Schaumburg, E.",
+    "year": null,
+    "source": "open PDF (nd.edu / informs.org)",
+    "url": null,
+    "type": "academic_paper",
+    "effect_family": "mean_reversion",
+    "grounds": ["rsi_14_30_70", "rsi_2_10_90"],
+    "note": "Confirms and extends Jegadeesh's original short-term reversal finding (original 1990 paper is paywalled; this is a genuinely open-access confirmation of the same effect)."
+  },
+  {
+    "id": "nyfed_decomposing_reversal",
+    "title": "Decomposing Short-Term Return Reversal",
+    "authors": "Federal Reserve Bank of New York Staff",
+    "year": null,
+    "source": "NY Fed Staff Report",
+    "url": "https://www.newyorkfed.org",
+    "type": "academic_paper",
+    "effect_family": "mean_reversion",
+    "grounds": ["rsi_14_30_70", "rsi_2_10_90"],
+    "note": "Second, independent source on the same reversal effect. NY Fed staff reports are open-access by policy."
+  },
+  {
+    "id": "baker_bradley_wurgler_lowvol",
+    "title": "Benchmarks as Limits to Arbitrage: Understanding the Low-Volatility Anomaly",
+    "authors": "Baker, M., Bradley, B., & Wurgler, J.",
+    "year": 2011,
+    "source": "SSRN / NYU Stern (free PDF)",
+    "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1585031",
+    "type": "academic_paper",
+    "effect_family": "low_volatility",
+    "grounds": ["regime_classifier_volatility"],
+    "note": "Foundational paper documenting that low-volatility stocks earn better risk-adjusted returns. Grounds the regime classifier's high/low-vol distinction."
+  },
+  {
+    "id": "chio_macd_comparative",
+    "title": "A Comparative Study of the MACD-Based Trading Strategies: Evidence from the US Stock Market",
+    "authors": "Chio, P. T.",
+    "year": 2022,
+    "source": "arXiv",
+    "url": "https://arxiv.org/abs/2206.12282",
+    "type": "academic_paper",
+    "effect_family": "macd",
+    "grounds": ["macd", "macd_signal", "macd_histogram"],
+    "note": "Genuinely open-access, tests MACD strategies specifically on US equities (relevant market, unlike several international-market MACD papers found during search)."
+  },
+  {
+    "id": "volts_volatility_trading",
+    "title": "VolTS: A Volatility-Based Trading System",
+    "authors": null,
+    "year": 2023,
+    "source": "arXiv",
+    "url": "https://arxiv.org/pdf/2307.13422",
+    "type": "academic_paper",
+    "effect_family": "volatility_breakout",
+    "grounds": ["regime_classifier_volatility", "atr", "natr"],
+    "note": "Volatility-based trading strategy combining statistical analysis with technical indicators."
+  },
+  {
+    "id": "algo_trading_dev_optimisation",
+    "title": "Algorithmic Trading Strategy Development and Optimisation",
+    "authors": null,
+    "year": 2026,
+    "source": "arXiv",
+    "url": "https://arxiv.org/pdf/2603.15848",
+    "type": "academic_paper",
+    "effect_family": "volatility_breakout",
+    "grounds": ["atr", "natr", "regime_classifier_volatility"],
+    "note": "Uses ATR-normalized volatility bucketing and EMA trend confirmation, directly analogous to this project's regime classifier design."
+  },
+  {
+    "id": "harvey_liu_zhu_2016",
+    "title": "...and the Cross-Section of Expected Returns",
+    "authors": "Harvey, C. R., Liu, Y., & Zhu, H.",
+    "year": 2014,
+    "source": "NBER Working Paper No. 20592",
+    "url": "https://www.nber.org/system/files/working_papers/w20592/w20592.pdf",
+    "type": "academic_paper",
+    "effect_family": "statistical_methodology",
+    "grounds": ["multiple_comparisons_correction"],
+    "note": "Foundational paper on multiple-hypothesis-testing corrections in finance. This is the academic justification for research_stats.multiple_comparisons (Benjamini-Hochberg) already built in Stage 4. Grounds the project's core rigor thesis, not any single strategy."
+  },
+  {
+    "id": "wilder_1978",
+    "title": "New Concepts in Technical Trading Systems",
+    "authors": "Wilder, J. W.",
+    "year": 1978,
+    "source": "practitioner book (cited by title/description, no free full text)",
+    "url": null,
+    "type": "practitioner_source",
+    "effect_family": "mean_reversion",
+    "grounds": ["rsi_14_30_70"],
+    "note": "Original source for RSI, already cited directly in KNOWN_STRATEGIES (schema.py). Added here for corpus consistency."
+  },
+  {
+    "id": "connors_alvarez_2009",
+    "title": "Short Term Trading Strategies That Work",
+    "authors": "Connors, L. A., & Alvarez, C.",
+    "year": 2009,
+    "source": "practitioner book (cited by title/description, no free full text)",
+    "url": null,
+    "type": "practitioner_source",
+    "effect_family": "mean_reversion",
+    "grounds": ["rsi_2_10_90"],
+    "note": "Original source for RSI(2) 10/90, already cited directly in KNOWN_STRATEGIES (schema.py). Added here for corpus consistency."
+  }
+]
