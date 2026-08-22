@@ -22,3 +22,29 @@ undercounting bug once re-testing exists later. Adding LangSmith env vars
 broke `Settings()` (`extra_forbidden`) — fixed by declaring the fields, not
 by loosening the strict-validation default. Full trail:
 `docs/explanations/stage-5/step-01-dependencies-schema-tracing.md`.
+
+---
+
+## Stage 5 component 2: the charter
+
+**Change:** `agentic_core/schemas.py` (`ParsedCharter`/`Charter` split so a
+hallucinated ticker has no field to land in — `resolved_universe` doesn't
+exist on anything the LLM produces) and `agentic_core/charter.py`
+(`parse_charter`, `resolve_universe`, `create_charter`, `confirm_charter`);
+`scripts/set_charter.py`, the interactive CLI standing in for Stage 7's
+confirmation UI.
+
+**Non-obvious:** real adversarial testing (four live Bedrock calls, not
+mocked) found a genuine gap: grounding sector and industry as two
+independent flat lists let the LLM combine two individually-real values
+into a pairing that matches zero tickers (`sector='Consumer Cyclical'` +
+`industry='Consumer Electronics'` — both real, never co-occurring). The
+zero-match block caught it correctly; the prompt was then fixed to ground
+on real `(sector, industry)` pairs instead, and the identical mandate
+re-run to confirm the fix. Also established a reusable principle for
+Component 6: retry design depends on who's watching — human-mediated retry
+(re-run the script) is correct here because she's present; Component 6's
+unattended loop will need automated retry-with-feedback instead, because
+nothing else will be. `TAVILY_API_KEY` hit the identical `Settings()` gap
+LangSmith did in Component 1 — same fix, now a recognized pattern. Full
+trail: `docs/explanations/stage-5/step-02-charter.md`.
