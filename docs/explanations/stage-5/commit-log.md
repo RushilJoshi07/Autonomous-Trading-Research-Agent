@@ -62,3 +62,40 @@ claim: `confirmed=t`, `confirmed_at` a few milliseconds after
 `created_at`, the persisted `charter` JSONB matching the terminal output.
 Step explainer's verification and honest-weaknesses sections updated —
 the gap they named is now closed, not just noted.
+
+---
+
+## Stage 5 component 3 (part 1): Tier-1 corpus ingestion and retrieval
+
+**Change:** `corpus_papers` schema fix (`id` slug replaces `arxiv_id` as
+PK, since only 1 of 15 real papers is arXiv-native; new `fetch_path`
+column) via migration `401a5c77cf08`. `CorpusEffectFamily` added to
+`agentic_core/schemas.py` for the corpus's "methodology" tag without
+widening the charter-facing `EffectFamily` enum. New
+`agentic_core/corpus.py`: fetch dispatch on 4 `fetch_path` states
+(arxiv/manual/manual_needs_confirmation/citation_only), pypdf extraction,
+tiktoken-based chunking, asymmetric bge-small-en-v1.5 embedding,
+pgvector cosine-distance retrieval. `scripts/ingest_corpus.py` prints a
+full accounting of every entry, not just successes. Downloaded 5 real
+manual PDFs (4 official NBER, 1 HEC Paris) plus 1 real arXiv auto-fetch;
+6 papers, 612 chunks now genuinely in the retrievable corpus.
+
+**Non-obvious:** two real bugs, both reproduced in minimal isolation
+before and after their fix. (1) Autogenerate's corpus_papers migration
+would have failed outright — it dropped the old PK column and added a
+new one with no PK constraint, then tried to FK against it; fixed by
+reordering and adding an explicit `create_primary_key`. (2) SQLAlchemy's
+unit-of-work didn't sequence a `CorpusPaper` insert before its
+`CorpusChunk` inserts despite correct `add()` order and no
+`relationship()` linking them — a real gap in the ORM's documented
+default behavior, not a batching quirk; fixed with an explicit
+`session.flush()` at the boundary. Also fixed: literal NUL bytes in one
+PDF's extracted text (Postgres can't store `\x00` at all) — same
+disclosed-limitation category as "math/tables extract noisily." Three
+real retrieval queries each landed exclusively on the correct paper out
+of 6 candidates spanning 4 topics — real evidence of semantic retrieval,
+not keyword luck. Open item, not yet resolved: `paper_list.json` has 15
+entries, not the 14 originally stated — a real third mean-reversion
+paper (`da_liu_schaumburg_reversal`, `year: null`) accounts for the
+difference; whether that's intentional is the user's call, still open.
+Full trail: `docs/explanations/stage-5/step-03-tier1-corpus.md`.

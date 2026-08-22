@@ -130,15 +130,29 @@ class ScoreboardEntry(Base):
 class CorpusPaper(Base):
     """Fetch-provenance row for one ingested paper -- same 'record when every
     row was fetched' discipline .claude/rules/data-pipeline.md requires for
-    price data. raw_path points at the PDF on local disk (data/corpus/raw/),
-    which is regenerable from arxiv_id and therefore gitignored -- this row,
-    not the PDF, is the system of record.
+    price data.
+
+    id is data/corpus/paper_list.json's own slug (e.g. "jegadeesh_titman_1993"),
+    not a raw arXiv ID -- not every paper in the curated list has one (most of
+    the strongest, most foundational papers predate arXiv's finance coverage
+    entirely and live on NBER/SSRN instead), and even the one arXiv-native
+    entry in the list uses a readable slug as its id, with the real arXiv ID
+    only appearing in its url field. fetch_path records how this row's PDF
+    was obtained ("arxiv" auto-fetched vs. "manual" pre-placed by a human) --
+    provenance, not a duplicate of paper_list.json's own richer curation
+    metadata (authors, year, effect_family, grounds, note), which stays there
+    as the one source of truth rather than being copied into two places that
+    could drift apart. raw_path points at the PDF on local disk
+    (data/corpus/raw/), regenerable (re-fetch for arxiv entries, re-place the
+    same file for manual ones) and therefore gitignored -- this row is the
+    system of record, not the PDF itself.
     """
 
     __tablename__ = "corpus_papers"
 
-    arxiv_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str] = mapped_column(Text)
+    fetch_path: Mapped[str] = mapped_column(String(16))  # arxiv / manual
     fetched_at: Mapped[datetime] = mapped_column()
     raw_path: Mapped[str] = mapped_column(String(256))
 
@@ -147,7 +161,7 @@ class CorpusChunk(Base):
     __tablename__ = "corpus_chunks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    paper_id: Mapped[str] = mapped_column(ForeignKey("corpus_papers.arxiv_id"), index=True)
+    paper_id: Mapped[str] = mapped_column(ForeignKey("corpus_papers.id"), index=True)
     chunk_index: Mapped[int] = mapped_column(Integer)
     chunk_text: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list] = mapped_column(Vector(384))

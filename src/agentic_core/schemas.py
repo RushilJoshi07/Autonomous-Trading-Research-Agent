@@ -18,9 +18,14 @@ class EffectFamily(str, Enum):
     """The effect families docs/architecture.md names as the ones a handful
     of curated papers can cover ("only a few dozen effect families...
     momentum, mean-reversion, low-volatility, value, quality, seasonality").
-    Component 3's corpus tags each paper against this same enum, so a
-    hypothesis's family and the corpus's own categorization can never drift
-    apart into two different vocabularies.
+
+    This is exactly the closed set ParsedCharter.hypothesis_families offers
+    her -- "methodology" is deliberately NOT a member here, even though the
+    corpus also holds methodology papers (Component 3): "investigate
+    methodology" is not something a research mandate would ever ask for,
+    since methodology papers ground the system's own statistical rigor
+    (the multiple-comparisons correction), not a hypothesis family to test.
+    See CorpusEffectFamily below for the corpus's own, slightly wider tag set.
     """
 
     MOMENTUM = "momentum"
@@ -29,6 +34,15 @@ class EffectFamily(str, Enum):
     VALUE = "value"
     QUALITY = "quality"
     SEASONALITY = "seasonality"
+
+
+CorpusEffectFamily = EffectFamily | Literal["methodology"]
+"""What a corpus paper (data/corpus/paper_list.json) can be tagged with --
+EffectFamily's six values plus "methodology" for papers like Harvey/Liu/Zhu
+that ground the agent's own statistical rigor rather than a specific effect.
+A distinct type from EffectFamily on purpose (see its docstring) rather than
+widening the charter-facing enum to include a value she should never see.
+"""
 
 
 class UniverseFilter(BaseModel):
