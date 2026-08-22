@@ -48,3 +48,17 @@ unattended loop will need automated retry-with-feedback instead, because
 nothing else will be. `TAVILY_API_KEY` hit the identical `Settings()` gap
 LangSmith did in Component 1 — same fix, now a recognized pattern. Full
 trail: `docs/explanations/stage-5/step-02-charter.md`.
+
+---
+
+## Stage 5 component 2 follow-up: confirm-path verification
+
+**Change:** no code changed. The step explainer had flagged confirmation's
+`y` branch as untested — only the block path had been proven for real.
+Ran `scripts/set_charter.py` end-to-end with the fixed "consumer tech
+companies" mandate and a real `y` answer, then queried the row directly
+from `strategy_research` rather than trusting the script's own printed
+claim: `confirmed=t`, `confirmed_at` a few milliseconds after
+`created_at`, the persisted `charter` JSONB matching the terminal output.
+Step explainer's verification and honest-weaknesses sections updated —
+the gap they named is now closed, not just noted.

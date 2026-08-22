@@ -385,21 +385,34 @@ pass. The full pre-existing test suite (`pytest -q`, 220 tests) was re-run
 after every meaningful code change in this component and stayed green
 throughout, including after both `Settings` fixes.
 
-**What this does not prove.** All four real-model runs used mandates
+The confirm path was verified with the same rigor as the block path, in a
+follow-up round specifically because the first pass had only proven the
+failure branch. `scripts/set_charter.py` was run for real with the fixed
+"consumer tech companies" mandate piped through stdin followed by a real
+`y` answer at the confirmation prompt — not simulated, the actual script
+process, the actual prompt. The script printed "Confirmed. The agent may
+now start work under this charter," and rather than trusting that printed
+claim, the row was queried directly from `strategy_research`:
+`confirmed = t`, `created_at = 2026-08-22 14:04:23.319157`,
+`confirmed_at = 2026-08-22 14:04:23.325095` — a few milliseconds after
+`created_at`, exactly as expected, since `create_charter` persists the
+unconfirmed row first and `confirm_charter` updates it moments later once
+the real answer comes back from the prompt. The `charter` JSONB column's
+contents were also read directly from the row and matched what the
+terminal had printed (`sector='Technology'`, `industry='Consumer
+Electronics'`, `resolved_universe=['AAPL']`) — confirming the persisted
+data, not just the in-memory object the script held before writing it.
+
+**What this does not prove.** All five real-model runs used mandates
 constructed to test specific things (a genuine-but-obscure real match, a
-genuine non-match, and the one that found the pairing gap) — this is not a
-systematic sweep over many mandate phrasings, and it's entirely possible
-other prompt-and-real-data combinations would surface a different gap the
-same way this one did, undiscovered until something like this same kind of
-adversarial testing finds it. The pairing fix closes the specific mechanism
-found here (independent field lists implying independent choice) but
-provides no structural guarantee against a different kind of grounding gap
-this testing didn't happen to probe. And confirmation itself was only
-exercised through the CLI's blocking path in this session — the `y`
-branch, which actually calls `confirm_charter` and sets `confirmed=True`,
-was not run for real in this component's own verification (though
-`confirm_charter`'s logic is simple enough — two field assignments and a
-commit — that this is a lower-risk gap than the ones that were tested).
+genuine non-match, the one that found the pairing gap, and its confirmed
+re-run) — this is not a systematic sweep over many mandate phrasings, and
+it's entirely possible other prompt-and-real-data combinations would
+surface a different gap the same way this one did, undiscovered until
+something like this same kind of adversarial testing finds it. The pairing
+fix closes the specific mechanism found here (independent field lists
+implying independent choice) but provides no structural guarantee against
+a different kind of grounding gap this testing didn't happen to probe.
 
 ## 6. Interview defense
 
@@ -458,13 +471,12 @@ different answer to the same underlying question, not a corner cut here.
 
 **Honest weaknesses, stated plainly:** the grounding-gap discovery was a
 product of the specific adversarial mandates tried, not a systematic proof
-of completeness — a differently-shaped gap could still exist. Confirmation
-itself (the `y` branch of the CLI) wasn't exercised in this component's own
-verification, only the blocking path was. And four real, unconfirmed test
-charters now sit in the actual `strategy_research` database from this
-testing, left in place rather than cleaned up — consistent with how Stage
-4's own manual verification also ran against real production data without
-a cleanup step, but worth naming rather than leaving implicit.
+of completeness — a differently-shaped gap could still exist. Five real,
+test charters (four unconfirmed, one now genuinely confirmed) sit in the
+actual `strategy_research` database from this testing, left in place
+rather than cleaned up — consistent with how Stage 4's own manual
+verification also ran against real production data without a cleanup
+step, but worth naming rather than leaving implicit.
 
 ## 7. What comes next and why
 
