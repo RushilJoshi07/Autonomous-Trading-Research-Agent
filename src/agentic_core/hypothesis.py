@@ -16,7 +16,15 @@ from sqlalchemy import select
 from agentic_core.db.models import Charter as CharterRow
 from agentic_core.db.models import Hypothesis as HypothesisRow
 from agentic_core.grounding import ground_topic
-from agentic_core.schemas import Charter, EffectFamily, GroundingResult, Hypothesis, ParsedHypothesis
+from agentic_core.schemas import (
+    Charter,
+    EffectFamily,
+    FalsificationCondition,
+    GroundingChunk,
+    GroundingResult,
+    Hypothesis,
+    ParsedHypothesis,
+)
 from backtester.registry import ALL_INDICATORS
 from backtester.schema import StrategyRule
 from data_pipeline.db.session import SessionFactory
@@ -43,6 +51,26 @@ class DuplicateHypothesisError(Exception):
     next. Building retry-with-feedback into this function would be solving
     an orchestration-layer problem that doesn't exist yet.
     """
+
+
+def hypothesis_from_row(row: HypothesisRow) -> Hypothesis:
+    """The inverse of propose_hypothesis's own row-building -- reconstructs
+    the validated Hypothesis a row was persisted from. First needed by
+    Component 5 (study_design.py), which has to read a hypothesis's rule/
+    rationale/falsification_condition back out to design its study; Component
+    6's execution loop will need the identical reconstruction, so it lives
+    here rather than being duplicated in study_design.py.
+    """
+    return Hypothesis(
+        parsed=ParsedHypothesis(
+            rule=StrategyRule.model_validate(row.rule),
+            prediction=row.prediction,
+            falsification_condition=FalsificationCondition.model_validate(row.falsification_condition),
+            rationale=row.rationale,
+        ),
+        grounding_tier=row.grounding_tier,
+        citations=[GroundingChunk.model_validate(c) for c in row.citations],
+    )
 
 
 def _rule_hash(rule: StrategyRule) -> str:

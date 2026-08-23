@@ -163,3 +163,46 @@ proven in both directions (a real repeat caught, a genuinely different
 rule not flagged) via direct hash verification, since natural LLM
 non-determinism made forcing a real collision impractical. Full trail:
 `docs/explanations/stage-5/step-05-hypothesis-generation.md`.
+
+---
+
+## Stage 5 component 5: study design
+
+**Change:** `agentic_core/study_design.py` — `propose_study_design(hypothesis_id)`:
+computes the real cross-ticker common trading window from cached price
+data (`_common_price_bounds`, the intersection of every universe ticker's
+range, not the union), asks the LLM for only the genuinely fuzzy call
+(`ParsedStudyDesign.design_type`/`split`), then computes actual calendar
+windows in code (`_simple_holdout` / `_walk_forward_windows`) and persists
+into the `study_designs` table that's sat unused since Component 1. New
+schemas: `DateRange`, `ParsedStudyDesign`, `StudyDesign` (same
+`ParsedX`/`X` split as Charter/Hypothesis). New `hypothesis.py` helper,
+`hypothesis_from_row`, shared by this component and (later) Component 6.
+14 new tests in `tests/agentic_core/test_study_design.py`.
+
+**Non-obvious:** the intersection-vs-union choice for cross-ticker bounds
+is the load-bearing decision — the union would let a newer ticker
+silently get a shorter effective study than its peers, confounding
+"different ticker" with "different calendar period" in exactly the
+cross-sectional case architecture.md Step 3 describes; caught before it
+ever ran for real, same standard as Stage 2's own lookahead gate. The
+mandatory significance control has no field anywhere (no
+`control_required` flag, not even one hardcoded `True`) — deliberately,
+so there's no stored value an agreeable LLM or a careless future change
+could flip; Component 6's loop enforces it as an invariant instead.
+`split`'s fraction means "in-sample share of the whole span" identically
+in both design types — walk_forward carves that same first share off,
+then only chops the *remainder* into folds, rather than reinventing
+per-fold splitting (which would require a re-optimization step this
+system's fixed StrategyRules don't have). `null_hypothesis` is a fixed
+constant, not LLM-written or per-design, since the control it describes
+never varies either. `regime_split` (splitting by `classify_regime`
+labels instead of calendar dates) is a named, deliberate gap, not built —
+none of Component 4's six effect families obviously demands it yet. Two
+real Bedrock calls (not mocked) verified both branches: the real
+Component 4 low-vol AAPL hypothesis correctly got `simple_holdout`/`80-20`
+with sound EMA(200)-warm-up reasoning in the LLM's own rationale; a
+hand-built decay-framed hypothesis correctly got `walk_forward` with 5
+real, gap-free folds. Dev database confirmed clean afterward by direct
+query, not assumed. Full trail:
+`docs/explanations/stage-5/step-06-study-design.md`.

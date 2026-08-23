@@ -187,3 +187,100 @@ class Hypothesis(BaseModel):
     parsed: ParsedHypothesis
     grounding_tier: Literal["local_corpus", "whitelist_search", "none"]
     citations: list[GroundingChunk]
+
+
+class DateRange(BaseModel):
+    """One inclusive [start, end] window over trading dates. Used both for
+    a single in-sample/out-of-sample pair and for each fold of a
+    walk_forward design -- one shape either way.
+    """
+
+    start: date
+    end: date
+
+    @model_validator(mode="after")
+    def _check_order(self) -> "DateRange":
+        if self.start > self.end:
+            raise ValueError(f"start ({self.start}) is after end ({self.end})")
+        return self
+
+
+class ParsedStudyDesign(BaseModel):
+    """Exactly what llm_client.structured_output is asked to produce for
+    Component 5. The genuinely fuzzy call here is design_type: whether this
+    hypothesis's rationale/prediction is a plain "does it beat random
+    entries" claim (simple_holdout) or a persistence/decay claim that needs
+    re-testing across several consecutive periods (walk_forward) -- see
+    docs/architecture.md Step 3 ("a decay claim needs rolling walk-forward").
+    Everything downstream of that choice (actual calendar dates, fold
+    boundaries) is computed by agentic_core/study_design.py, never by the
+    LLM -- same "model proposes, code disposes" split as Charter's
+    universe.cut -> CUT_TO_PERCENTILE.
+
+    split is a closed vocabulary for the same reason universe.cut is
+    (.claude/rules/data-pipeline.md: relative, never hand-picked): it fixes
+    how much of the window is in-sample, without letting the LLM emit an
+    arbitrary fraction like 0.93.
+
+    walk_forward_folds only means something when design_type ==
+    "walk_forward" -- the validator below enforces that pairing so a
+    malformed design (folds specified with no walk-forward, or walk-forward
+    with no fold count) never reaches study_design.py's date arithmetic.
+    """
+
+    design_type: Literal["simple_holdout", "walk_forward"]
+    split: Literal["70/30", "80/20"]
+    walk_forward_folds: int | None = Field(default=None, ge=2)
+    rationale: str
+
+    @model_validator(mode="after")
+    def _check_folds_match_design_type(self) -> "ParsedStudyDesign":
+        if self.design_type == "walk_forward" and self.walk_forward_folds is None:
+            raise ValueError("walk_forward requires walk_forward_folds")
+        if self.design_type == "simple_holdout" and self.walk_forward_folds is not None:
+            raise ValueError("simple_holdout must not specify walk_forward_folds")
+        return self
+
+
+class StudyDesign(BaseModel):
+    """ParsedStudyDesign plus what code alone resolves. in_sample,
+    out_of_sample, and walk_forward_windows are never fields the LLM is
+    asked to fill in -- they're computed from the real cached trading
+    calendar shared across charter.resolved_universe, the same
+    resolved_universe-style guarantee Charter and Hypothesis already
+    established for their own code-filled fields.
+
+    For design_type == "walk_forward", in_sample and out_of_sample are
+    always walk_forward_windows[0] and walk_forward_windows[1] -- a caller
+    that only wants "the first look" reads those two fields exactly as it
+    would for a simple_holdout design; walk_forward_windows carries the
+    complete ordered fold list (including those first two) for a caller
+    that wants the full rolling picture. walk_forward_windows is None for
+    simple_holdout, where there's nothing beyond the one pair.
+
+    null_hypothesis is a fixed constant, not computed per-design (see
+    study_design.NULL_HYPOTHESIS) -- the mandatory control
+    (.claude/rules/agent-honesty.md's "every quantitative claim..." and
+    docs/architecture.md's "the control is MANDATORY") is unconditional, so
+    the null it tests is unconditional too. There is deliberately no
+    control_required-style field on this schema: making it a stored choice
+    would imply it's something a later step could decide against, which is
+    exactly the kind of agreeable-LLM escape hatch Stage 5's sacred gate is
+    designed to close. Component 6's execution loop enforces it as an
+    invariant instead.
+    """
+
+    parsed: ParsedStudyDesign
+    in_sample: DateRange
+    out_of_sample: DateRange
+    walk_forward_windows: list[DateRange] | None = None
+    null_hypothesis: str
+
+    @model_validator(mode="after")
+    def _check_no_overlap(self) -> "StudyDesign":
+        if self.out_of_sample.start <= self.in_sample.end:
+            raise ValueError(
+                f"out_of_sample ({self.out_of_sample.start}) must start after "
+                f"in_sample ends ({self.in_sample.end})"
+            )
+        return self
