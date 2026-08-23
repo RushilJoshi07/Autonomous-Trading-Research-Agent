@@ -88,6 +88,21 @@ def unique_terms(*term_lists: list[IndicatorTerm]) -> dict[IndicatorKey, Indicat
     return result
 
 
+def rule_indicator_names(rule: StrategyRule) -> tuple[str, ...]:
+    """Every distinct indicator name referenced anywhere in a rule's entry or
+    exit tree, sorted. Public because Stage 5's execution loop
+    (agentic_core/loop_state.py) constrains the agent's compute_indicator
+    calls to exactly this set -- the diagnostic question the loop can ask is
+    "why did THIS rule behave this way", so the indicators it may inspect are
+    the ones the rule itself uses. Returns a tuple, not a list, because it
+    feeds a typing.Literal, which requires hashable arguments.
+    """
+    entry_terms = _collect_indicator_terms(rule.entry)
+    exit_terms = _collect_indicator_terms(rule.exit) if rule.exit is not None else []
+    terms = unique_terms(entry_terms, exit_terms)
+    return tuple(sorted({term.name for term in terms.values()}))
+
+
 def indicator_usage(terms: dict[IndicatorKey, IndicatorTerm]) -> tuple[list[str], list[str]]:
     """Split a unique-terms map into (core names used, extended names used), both sorted."""
     used_names = {term.name for term in terms.values()}

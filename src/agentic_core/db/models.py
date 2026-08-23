@@ -97,6 +97,12 @@ class ToolCallTrace(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     study_run_id: Mapped[str] = mapped_column(ForeignKey("study_runs.id"), index=True)
     step_index: Mapped[int] = mapped_column(Integer)
+    # Which StudyDesign window this call ran against. Stamped at write time
+    # rather than derived later from the date arguments: Component 7 has to
+    # attribute a claim ("out-of-sample Sharpe was 0.21") to the window it
+    # came from, and matching on dates would work but breaks the moment two
+    # windows share a boundary or a tool records dates differently.
+    window_index: Mapped[int] = mapped_column(Integer, default=0)
     tool_name: Mapped[str] = mapped_column(String(64))
     arguments: Mapped[dict] = mapped_column(JSONB)
     result: Mapped[dict] = mapped_column(JSONB)
