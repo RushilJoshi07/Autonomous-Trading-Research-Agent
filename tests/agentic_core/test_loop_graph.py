@@ -26,7 +26,7 @@ from agentic_core.db.models import Hypothesis as HypothesisRow
 from agentic_core.db.models import StudyDesign as StudyDesignRow
 from agentic_core.db.models import StudyRun as StudyRunRow
 from agentic_core.db.models import ToolCallTrace as ToolCallTraceRow
-from agentic_core.loop_graph import MAX_STEPS, build_graph, initial_state
+from agentic_core.loop_graph import MAX_DECISION_ATTEMPTS, MAX_STEPS, build_graph, initial_state
 from agentic_core.loop_state import build_decision_model, can_advance, can_conclude
 from tests.agentic_core.test_loop_state import _charter, _design, _hypothesis
 
@@ -270,6 +270,205 @@ def test_budget_exhaustion_fails_the_run_rather_than_concluding(loop_db_session)
     row = loop_db_session.get(StudyRunRow, final["study_run_id"])
     loop_db_session.refresh(row)
     assert row.status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Bounded retry-with-feedback
+# ---------------------------------------------------------------------------
+
+
+class _FakeBlock:
+    type = "tool_use"
+
+    def __init__(self, payload):
+        self.input = payload
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self.content = [_FakeBlock(payload)]
+
+
+def _structured_error(payload, message="rejected"):
+    from llm_client import StructuredOutputError
+
+    return StructuredOutputError(message, validation_error=None, raw_response=_FakeResponse(payload))
+
+
+class FlakyAgent(LazyAgent):
+    """Fails the first `n_failures` calls with the EXACT malformed shape
+    Claude produced live -- the nested decision object serialized as a
+    JSON string, with a trailing brace making it invalid JSON.
+    """
+
+    def __init__(self, n_failures: int, payload: str | dict | None = None):
+        super().__init__()
+        self.remaining = n_failures
+        self.payload = payload if payload is not None else _REAL_MALFORMED
+        self.attempts = 0
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt, response_model):
+        self.attempts += 1
+        self.prompts.append(prompt)
+        if self.remaining > 0:
+            self.remaining -= 1
+            raise _structured_error({"decision": self.payload})
+        return super().__call__(prompt, response_model)
+
+
+# Reproduced from the real Bedrock failure in Component 6b's first two live
+# runs: the extra trailing '}' is what made json.loads fail, which is why
+# the stringified-decision validator alone did not save the run.
+_REAL_MALFORMED = (
+    '{"action": "advance_phase", "reasoning": "In-sample testing is complete. '
+    'Proceeding to the out-of-sample window (window 1 of 2)."}}'
+)
+
+
+def test_retry_recovers_from_the_real_malformed_output(loop_db_session):
+    """The live failure, reproduced exactly and then survived."""
+    hyp_id, design_id, charter, hypothesis, design = _seed(loop_db_session, 2)
+    fake = FakeSession()
+    agent = FlakyAgent(n_failures=1)
+    graph = build_graph(lambda: fake, agent, design_id=design_id, hypothesis_id=hyp_id)
+    final = asyncio.run(graph.ainvoke(initial_state(charter, hypothesis, design), {"recursion_limit": 200}))
+
+    assert final["status"] == "completed"
+    assert len(final["rejections"]) == 1
+    assert final["rejections"][0].kind == "encoding"
+
+
+def test_every_retry_attempt_costs_a_step(loop_db_session):
+    """The budget is a COST control: its unit is LLM calls made. If retries
+    were free, a persistently malformed model would generate unbounded
+    billable calls while step_count stayed frozen.
+    """
+    hyp_id, design_id, charter, hypothesis, design = _seed(loop_db_session, 2)
+    clean = FakeSession()
+    baseline_agent = LazyAgent()
+    graph = build_graph(lambda: clean, baseline_agent, design_id=design_id, hypothesis_id=hyp_id)
+    baseline = asyncio.run(graph.ainvoke(initial_state(charter, hypothesis, design), {"recursion_limit": 200}))
+
+    hyp2, design2, charter2, hypothesis2, design_obj2 = _seed(loop_db_session, 2)
+    flaky = FlakyAgent(n_failures=2)
+    graph2 = build_graph(lambda: FakeSession(), flaky, design_id=design2, hypothesis_id=hyp2)
+    retried = asyncio.run(graph2.ainvoke(initial_state(charter2, hypothesis2, design_obj2), {"recursion_limit": 200}))
+
+    assert retried["step_count"] == baseline["step_count"] + 2
+
+
+def test_exhausted_retries_fail_cleanly_instead_of_crashing(loop_db_session):
+    """Before retry existed, a malformed output propagated and crashed the
+    graph, leaving StudyRun.status='running' with orphaned traces and no
+    recorded reason -- observed twice on real runs. It must now be a
+    recorded failure.
+    """
+    hyp_id, design_id, charter, hypothesis, design = _seed(loop_db_session, 2)
+    agent = FlakyAgent(n_failures=99)
+    graph = build_graph(lambda: FakeSession(), agent, design_id=design_id, hypothesis_id=hyp_id)
+    final = asyncio.run(graph.ainvoke(initial_state(charter, hypothesis, design), {"recursion_limit": 200}))
+
+    assert final["status"] == "failed"
+    assert final["failure_reason"] is not None
+    assert len(final["rejections"]) == MAX_DECISION_ATTEMPTS
+    row = loop_db_session.get(StudyRunRow, final["study_run_id"])
+    loop_db_session.refresh(row)
+    assert row.status == "failed"
+    assert row.finished_at is not None
+
+
+def test_retry_feedback_names_what_was_wrong_and_what_is_available(loop_db_session):
+    hyp_id, design_id, charter, hypothesis, design = _seed(loop_db_session, 2)
+    agent = FlakyAgent(n_failures=1)
+    graph = build_graph(lambda: FakeSession(), agent, design_id=design_id, hypothesis_id=hyp_id)
+    asyncio.run(graph.ainvoke(initial_state(charter, hypothesis, design), {"recursion_limit": 200}))
+
+    retry_prompt = agent.prompts[1]
+    assert "REJECTED" in retry_prompt
+    assert "nested JSON OBJECT" in retry_prompt
+    assert "Actions available to you right now" in retry_prompt
+
+
+def test_a_guarantee_violation_is_recorded_as_such_not_as_encoding(loop_db_session):
+    """A model genuinely attempting a forbidden action is evidence for
+    Sacred Gate 2 -- the guard firing against a real decision, not a fake
+    one. It must not be filed as serialization noise.
+    """
+    hyp_id, design_id, charter, hypothesis, design = _seed(loop_db_session, 3)
+    agent = FlakyAgent(n_failures=1, payload={"action": "conclude", "reasoning": "done early"})
+    graph = build_graph(lambda: FakeSession(), agent, design_id=design_id, hypothesis_id=hyp_id)
+    final = asyncio.run(graph.ainvoke(initial_state(charter, hypothesis, design), {"recursion_limit": 200}))
+
+    assert final["rejections"][0].kind == "guarantee_violation"
+    assert "conclude" in final["rejections"][0].detail
+
+
+def test_retry_cannot_smuggle_a_forbidden_action_through(loop_db_session):
+    """The whole safety argument for retry: the schema is rebuilt
+    IDENTICALLY each attempt, so a retry is a second chance to pick
+    something legal, never a second chance at the forbidden thing.
+    """
+    state = _state_for_schema()
+    from agentic_core.loop_state import build_decision_model
+
+    first = build_decision_model(state).model_json_schema()
+    second = build_decision_model(state).model_json_schema()
+    assert first == second
+    assert "conclude" not in str(first["$defs"].keys())
+
+
+def _state_for_schema():
+    from tests.agentic_core.test_loop_state import _evidence_complete, _state
+
+    return _state(n_windows=5, results=_evidence_complete())
+
+
+# ---------------------------------------------------------------------------
+# Prompt compaction
+# ---------------------------------------------------------------------------
+
+
+def test_compact_collapses_series_but_keeps_scalar_metrics():
+    """The metrics a verdict is built from must survive compaction intact;
+    only the bulk series collapse. If sharpe_ratio ever got summarized
+    away, the agent would be deciding blind.
+    """
+    from agentic_core.loop_graph import _compact
+
+    out = _compact({
+        "sharpe_ratio": 1.12,
+        "num_trades": 42,
+        "trade_returns": [0.01] * 400,
+    })
+    assert out["sharpe_ratio"] == 1.12
+    assert out["num_trades"] == 42
+    assert isinstance(out["trade_returns"], str)
+    assert "400 items" in out["trade_returns"]
+
+
+def test_compaction_does_not_touch_the_stored_trace(loop_db_session):
+    """The whole safety argument for compaction is that it applies to the
+    PROMPT only -- Component 7 validates claims against the trace table,
+    so the stored payload must stay complete. If this ever fails,
+    compaction has leaked into the durable record and the fabrication
+    check is reading truncated evidence.
+    """
+    hyp_id, design_id, charter, hypothesis, design = _seed(loop_db_session, 2)
+
+    class BigSession(FakeSession):
+        async def call_tool(self, name, arguments):
+            self.calls.append((name, arguments))
+            return FakeToolResponse({"sharpe_ratio": 1.1, "trade_returns": [0.01] * 500})
+
+    fake = BigSession()
+    graph = build_graph(lambda: fake, LazyAgent(), design_id=design_id, hypothesis_id=hyp_id)
+    final = asyncio.run(graph.ainvoke(initial_state(charter, hypothesis, design), {"recursion_limit": 200}))
+
+    traces = loop_db_session.query(ToolCallTraceRow).filter_by(study_run_id=final["study_run_id"]).all()
+    assert traces
+    for t in traces:
+        assert len(t.result["trade_returns"]) == 500
 
 
 def test_a_permanently_failing_control_can_never_reach_completed(loop_db_session):

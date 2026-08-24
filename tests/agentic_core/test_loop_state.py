@@ -312,6 +312,68 @@ def test_hostile_llm_cannot_advance_without_running_the_control():
 
 
 # ---------------------------------------------------------------------------
+# Stringified-decision tolerance (real bug from the first live Bedrock run)
+# ---------------------------------------------------------------------------
+
+# The exact shape Claude actually emitted on Component 6b's first live run:
+# the nested decision object serialized as a JSON STRING instead of an
+# object. The run failed with "Input should be a valid dictionary or object
+# to extract fields from [input_type=str]" on an otherwise perfectly valid
+# advance_phase decision, after run_backtest and test_significance had both
+# already succeeded in window 0.
+_REAL_STRINGIFIED_DECISION = (
+    '{"action": "advance_phase", "reasoning": "In-sample testing is complete '
+    '(Sharpe 1.34, p=0.02). Proceeding to the out-of-sample window 1)."}'
+)
+
+
+def test_stringified_decision_is_accepted():
+    """Regression for the exact live failure. If this breaks, the loop
+    cannot survive contact with the real model.
+    """
+    state = _state(n_windows=3, results=_evidence_complete())
+    model = build_decision_model(state)
+    ok = model.model_validate({"decision": _REAL_STRINGIFIED_DECISION})
+    assert ok.decision.action == "advance_phase"
+
+
+def test_stringified_decision_still_obeys_every_guard():
+    """The fix normalizes ENCODING ONLY. A forbidden action wrapped in a
+    string must still be rejected -- otherwise the tolerance would have
+    become a bypass, which is exactly how a guarantee quietly dies.
+    """
+    # conclude, while unvisited windows remain
+    state = _state(n_windows=5, results=_evidence_complete())
+    model = build_decision_model(state)
+    with pytest.raises(ValidationError):
+        model.model_validate({"decision": '{"action": "conclude", "reasoning": "done"}'})
+
+    # a locked diagnostic tool, before any evidence exists
+    fresh = build_decision_model(_state())
+    with pytest.raises(ValidationError):
+        fresh.model_validate(
+            {"decision": '{"action": "call_tool", "tool": "classify_regime", '
+                         '"ticker": "AAPL", "reasoning": "peek"}'}
+        )
+
+    # a smuggled date, inside a string
+    with pytest.raises(ValidationError):
+        fresh.model_validate(
+            {"decision": '{"action": "call_tool", "tool": "run_backtest", "ticker": "AAPL", '
+                         '"reasoning": "x", "start": "2099-01-01"}'}
+        )
+
+
+def test_non_json_string_surfaces_the_real_error_not_a_json_error():
+    """The parse is deliberately narrow: garbage passes through untouched
+    so Pydantic's own error surfaces, rather than being masked.
+    """
+    model = build_decision_model(_state())
+    with pytest.raises(ValidationError):
+        model.model_validate({"decision": "not json at all"})
+
+
+# ---------------------------------------------------------------------------
 # The union always offers a legal move
 # ---------------------------------------------------------------------------
 

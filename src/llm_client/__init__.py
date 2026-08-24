@@ -1,13 +1,30 @@
 """Minimal LLM abstraction — the project's only entry point for calling Claude.
 
-Single call, single validation attempt, raise on failure. No retry loop: what
-"retry" should mean here (same prompt again? feedback to the model fed back as
-a tool_result? capped by what budget?) is a real design question that depends
-on Stage 5's loop guardrails, which don't exist yet. Deliberately deferred, not
-omitted — see the Stage 3 plan's own note that this module gains retries in
-Stage 5. StructuredOutputError carries the raw response and the Pydantic
-validation error so that future retry logic has everything it needs without
-this function's contract changing.
+Single call, single validation attempt, raise on failure. No retry loop —
+and, having now been decided in Stage 5, this is permanent rather than
+pending.
+
+The original note here said this module "gains retries in Stage 5", because
+what retry should mean (same prompt again? feedback fed back to the model?
+capped by what budget?) depended on loop guardrails that did not exist yet.
+Those guardrails now exist, and the answer turned out to be that retry does
+NOT belong in this module. Three callers deliberately do not retry, each for
+a documented reason: agentic_core/charter.py is human-mediated, so re-running
+the script IS the retry; agentic_core/hypothesis.py raises
+DuplicateHypothesisError specifically so the caller decides; and
+agentic_core/study_design.py raises InsufficientHistoryError on the same
+reasoning. A general retry underneath structured_output would silently
+override all three.
+
+Retry therefore lives in the one caller that runs unattended with a budget:
+agentic_core/loop_graph.py's decide_next_action, which retries up to
+MAX_DECISION_ATTEMPTS with the validation error fed back to the model, and
+charges every attempt against the loop's own step budget. This function's
+no-retry contract is what makes that possible — a caller cannot implement a
+budgeted retry on top of a function that has already silently retried.
+
+StructuredOutputError carries the raw response and the Pydantic validation
+error, which is exactly what that retry logic reads to build its feedback.
 
 Built against AWS Bedrock (AnthropicBedrock), not the direct Anthropic API —
 this project's LLM usage is funded by AWS credits (docs/architecture.md,

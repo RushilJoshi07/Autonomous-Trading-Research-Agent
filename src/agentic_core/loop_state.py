@@ -33,10 +33,11 @@ Three guarantees, in order of importance:
 
 from __future__ import annotations
 
+import json
 import operator
 from typing import Annotated, Any, Literal, TypedDict, Union
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
 from agentic_core.schemas import Charter, DateRange, Hypothesis, StudyDesign
 from backtester.strategies.rule_strategy import rule_indicator_names
@@ -89,14 +90,42 @@ class ToolResult(BaseModel):
     is_error: bool
 
 
+class Rejection(BaseModel):
+    """One LLM output that failed validation and triggered a retry.
+
+    `kind` is the interesting field. An "encoding" rejection is noise --
+    the model's intent was legal and the serialization broke. A
+    "guarantee_violation" is the opposite: the model genuinely tried to do
+    something the loop forbids, and the schema refused it. That second
+    kind is direct evidence for Sacred Gate 2 -- the guard firing against
+    a REAL model rather than against Component 6a's fake one -- and
+    without this record it would vanish silently into a successful retry.
+
+    Deliberately not persisted to a table yet. Component 7 owns verdict
+    disclosure (including "this is hypothesis 34 under this charter"), so
+    it should decide what a rejection record needs to look like on disk
+    rather than having this component guess. The disclosed cost: these
+    records die with the run, since there is no checkpointer either.
+    """
+
+    step_index: int
+    window_index: int
+    attempt: int
+    kind: Literal["encoding", "guarantee_violation"]
+    detail: str
+    error: str
+    raw_output: str
+
+
 class LoopState(TypedDict):
     """LangGraph's state object.
 
-    `results` uses operator.add as its reducer, which means nodes can only
-    ever APPEND to it. There is deliberately no reducer here that
-    overwrites: no step can edit or erase evidence already recorded, which
-    mirrors the append-only tool_call_traces table on the database side.
-    Every other mutable field is a scalar a node replaces wholesale.
+    `results` and `rejections` both use operator.add as their reducer,
+    which means nodes can only ever APPEND to them. There is deliberately
+    no reducer here that overwrites: no step can edit or erase evidence
+    already recorded, which mirrors the append-only tool_call_traces table
+    on the database side. Every other mutable field is a scalar a node
+    replaces wholesale.
     """
 
     # written once at entry, never again
@@ -111,6 +140,7 @@ class LoopState(TypedDict):
     step_count: int
     pending_action: Any | None
     results: Annotated[list[ToolResult], operator.add]
+    rejections: Annotated[list[Rejection], operator.add]
     status: Literal["running", "completed", "failed"]
     failure_reason: str | None
 
@@ -193,6 +223,77 @@ def can_conclude(state: LoopState) -> bool:
         state["window_index"] == len(state["windows"]) - 1
         and window_evidence_complete(state, state["window_index"])
     )
+
+
+def offered_actions(state: LoopState) -> list[str]:
+    """The action names legal right now -- used both to classify a
+    rejection and to tell the model what it may actually choose.
+    """
+    actions = ["call_tool"]
+    if can_advance(state):
+        actions.append("advance_phase")
+    if can_conclude(state):
+        actions.append("conclude")
+    return actions
+
+
+def classify_rejection(raw_input: Any, state: LoopState) -> tuple[str, str]:
+    """Decide whether a rejected output was an ENCODING failure or a real
+    GUARANTEE VIOLATION, and produce the human-readable detail that goes
+    back to the model as feedback.
+
+    Classifies by inspecting what the model actually NAMED, not by
+    pattern-matching Pydantic's error text. Error strings are formatting,
+    not API -- they change between Pydantic versions, and a classifier
+    built on them would silently start mislabelling every rejection after
+    an upgrade, which is exactly the kind of silent degradation this
+    project tries not to build.
+    """
+    decision = raw_input.get("decision") if isinstance(raw_input, dict) else None
+
+    if isinstance(decision, str):
+        try:
+            decision = json.loads(decision)
+        except json.JSONDecodeError:
+            return "encoding", (
+                "`decision` was a JSON-encoded STRING, and a malformed one. "
+                "It must be a nested JSON object."
+            )
+    if not isinstance(decision, dict):
+        return "encoding", "`decision` must be a nested JSON object."
+
+    action = decision.get("action")
+    available = offered_actions(state)
+
+    if action not in available:
+        if action == "conclude":
+            return "guarantee_violation", (
+                "`conclude` is not available: every window must have a successful "
+                "run_backtest AND test_significance before the study can end, and "
+                "all windows must have been visited."
+            )
+        if action == "advance_phase":
+            return "guarantee_violation", (
+                "`advance_phase` is not available: this window still needs a "
+                "successful run_backtest AND test_significance."
+            )
+        return "encoding", f"unknown action {action!r}; choose one of {available}."
+
+    if action == "call_tool":
+        tool, ticker = decision.get("tool"), decision.get("ticker")
+        if tool not in available_tools(state):
+            return "guarantee_violation", (
+                f"tool {tool!r} is not available in this window. Available now: "
+                f"{list(available_tools(state))}. Diagnostic tools unlock only after "
+                "an evidence tool has succeeded in THIS window."
+            )
+        if ticker not in state["charter"].resolved_universe:
+            return "guarantee_violation", (
+                f"ticker {ticker!r} is outside this charter's universe "
+                f"{state['charter'].resolved_universe}."
+            )
+
+    return "encoding", "the response did not match the required schema."
 
 
 def build_decision_model(state: LoopState) -> type[BaseModel]:
@@ -286,5 +387,38 @@ def build_decision_model(state: LoopState) -> type[BaseModel]:
         model_config = ConfigDict(extra="forbid")
 
         decision: decision_type  # type: ignore[valid-type]
+
+        @field_validator("decision", mode="before")
+        @classmethod
+        def _accept_stringified_object(cls, v: Any) -> Any:
+            """Claude sometimes emits this nested object as a JSON STRING
+            rather than a nested object -- observed on the very first live
+            Bedrock run (Component 6b), which failed with "Input should be
+            a valid dictionary or object to extract fields from
+            [input_type=str]" on an otherwise valid advance_phase decision.
+
+            This tolerates the serialization quirk WITHOUT weakening any
+            guarantee: the parsed dict still goes through the same
+            discriminated-union validation immediately afterwards, so an
+            action absent from the union (a locked tool, a forbidden
+            conclude) still fails exactly as before. Only the encoding is
+            normalized, never the contents.
+
+            Deliberately narrow: it parses only when the value is a string
+            AND the parse yields a dict. Anything else passes through
+            untouched so the real validation error surfaces rather than
+            being masked by a JSON error. Note this handles only the
+            WELL-FORMED stringified case -- the malformed variant observed
+            live (a trailing extra brace) still fails here by design, and
+            is handled by loop_graph's retry instead.
+            """
+            if isinstance(v, str):
+                try:
+                    parsed = json.loads(v)
+                except json.JSONDecodeError:
+                    return v
+                if isinstance(parsed, dict):
+                    return parsed
+            return v
 
     return AgentDecision

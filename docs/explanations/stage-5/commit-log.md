@@ -260,3 +260,61 @@ default `recursion_limit` would trip before MAX_STEPS was wrong — 1.2.11
 defaults to 10007, not 25, verified by running a full 82-node-visit study
 with no override. Full trail:
 `docs/explanations/stage-5/step-07-execution-loop-state.md`.
+
+---
+
+## Stage 5 component 6b: the live execution loop + bounded retry
+
+**Change:** `scripts/run_study.py` — the live runner (real MCP subprocess
+over stdio, real Bedrock, step accounting, raw-output capture on
+rejection). `loop_graph.py` gains bounded retry-with-feedback in
+`decide_next_action` (`MAX_DECISION_ATTEMPTS=3`), a `decision_failed`
+node, `_retry_prompt`, and `_compact`. `loop_state.py` gains `Rejection`,
+the append-only `rejections` state field, `offered_actions`,
+`classify_rejection`, and a stringified-decision validator.
+`llm_client`'s docstring corrected. Suite 276 -> 287.
+
+**Non-obvious:** the graph itself did NOT change to go live — session and
+LLM were injected parameters from the start, so 6b swaps arguments, not
+machinery. That was the whole point of the 6a/6b split and it held.
+RETRY LANDED IN THE LOOP, NOT `llm_client`, reversing what that module's
+own docstring promised since Stage 3: three callers (charter, hypothesis,
+study_design) deliberately raise instead of retrying, each documented, and
+a general retry underneath would override all three silently — plus a
+caller cannot implement a BUDGETED retry on top of a function that already
+retried invisibly. Docstring rewritten to record the reversal rather than
+left reading as unfulfilled. Retry is safe on guarantee violations because
+the response model is built ONCE before the loop and reused unchanged —
+a locked tool is still absent from the enum on attempt 3, so a retry is a
+second chance to pick something legal, never a second chance at the
+forbidden thing (asserted by a test comparing two consecutive schema
+builds). Feedback can safely name exactly why an action was refused: the
+gate reads real trace rows, not claims, so there is no perfunctory path to
+satisfy it. EVERY ATTEMPT COSTS A STEP — the budget is a cost control whose
+unit is "LLM calls made"; free retries would let a malformed model generate
+unbounded billable calls while step_count froze. Exhausted attempts route
+to a recorded `status='failed'`, never to a verdict. If this starts
+exhausting, the committed fix is restructuring the schema to remove the
+nested `decision` object, NOT raising the attempt count. TWO REAL BUGS
+found only by going live: (1) the stringified-decision failure — Claude
+emits the nested decision as a JSON STRING; 2 of 3 runs died on it, and the
+malformed variant carried a trailing brace so `json.loads` failed, which is
+why the validator alone didn't save run 2. Run 3 succeeding was luck, not
+proof, and was explicitly not treated as a fix. (2) prompt-size: every
+diagnostic tool returns one record per trading day — 3,331 rows, ~320KB per
+call, compounding each step — caught before any real spend; `_compact`
+shrinks the PROMPT only, with a test asserting the stored trace stays
+complete, since Component 7 validates against the table not the prompt.
+MAX_STEPS CALIBRATION: 6 steps/2 windows and 12 steps/4 windows — exactly
+3.0 per window both times, 15% and 30% of the 40 budget. LEFT AT 40
+deliberately: both runs used zero diagnostic tools, so the branching path
+architecture.md calls "the agency" is still unobserved, and it is exactly
+the path that would consume extra steps. Honest scope: the live runs prove
+the LOOP COMPLETES RELIABLY; they do NOT prove the RETRY RECOVERS, because
+the retry path never fired — recovery is proven by unit tests replaying the
+exact malformed string. Also: the no-checkpointer cost from 6a arrived
+immediately, twice, as unresumable `status='running'` rows needing manual
+cleanup. And a self-inflicted error worth recording: `git checkout` on
+loop_state.py during mutation testing discarded that file's uncommitted
+work (5 additions); all rewritten and re-verified byte-identical. Full
+trail: `docs/explanations/stage-5/step-08-live-execution-loop.md`.
