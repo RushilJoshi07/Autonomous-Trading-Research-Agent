@@ -378,3 +378,59 @@ has never run on real data, and an agent that rejected everything would
 pass every test in this file. Stage 6's golden set with planted-TRUE
 hypotheses is what closes that. Full trail:
 `docs/explanations/stage-5/step-09-verdict.md`.
+
+---
+
+## Stage 5 gating decision: the stage is not closed, and why
+
+**No code change.** A correction to `step-09-verdict.md` and a decision
+recorded here for the permanent record, prompted by a direct question
+about why no `stage-5-summary.md` exists yet.
+
+**The precedent, checked against the actual repo history, not assumed:**
+Stage 3 and Stage 4 both wrote their Level-3 summary only after a
+dedicated, self-contained gate-verification component -- `verify_stage3_
+gate.py` (Stage 3 component 9) and the manual MCP verification script
+(Stage 4 component 9) -- had run and passed. In both cases the summary
+commit came strictly after the gate-script commit, with no interim
+"pending" marker file; the absence of the summary file was itself the
+signal that the stage wasn't closed yet. Stage 5 is following the
+identical pattern: components 1-7 are done, but none of them is that
+dedicated gate script, so `stage-5-summary.md` does not exist yet and
+should not.
+
+**A real mistake caught and corrected, not just a gap filled:**
+`step-09-verdict.md` originally said Stage 6's golden set is what closes
+Component 7's unproven confirmation path, and called it "the next thing I
+would build." That is circular and wrong: the build order is explicit
+that no stage begins before the previous one's gate has passed, so Stage
+6 cannot be the mechanism that closes Stage 5's own gate without Stage 5
+depending on a stage that, by the project's own rule, cannot yet exist.
+Architecture.md's own description of the golden set confirms it isn't
+built as a one-time gate-closer either -- it's meant to run continuously
+in production for ongoing drift detection, a different job from proving
+Sacred Gate 2 the first time. Three sentences in the step explainer
+overstating this were corrected in place, marked as corrections rather
+than silently rewritten.
+
+**What actually closes Stage 5:** Component 8, `verify_stage5_gate.py` --
+a dedicated gate script in the same style as Stages 2-4's own, using only
+Stage 5's own tooling. It has two jobs Component 7 could not do alone:
+prove the confirm path (never run on real data; unit-tested only against
+constructed evidence) and adversarially attempt fabrication against the
+live system (Component 7's fabrication tests are all synthetic claims fed
+directly to `validate_claims`, not "make the real agent try to lie and
+catch it"). The confirm-path proof will use a DELIBERATELY CONSTRUCTED
+synthetic case with an unambiguous, built-in edge -- explicitly not a real
+selected hypothesis, and explicitly the same reasoning Stage 2's own
+lookahead gate used a deliberately cheating strategy rather than hoping a
+real one would happen to reveal the bug. Selecting a real hypothesis
+after the fact because it happens to confirm would be exactly the kind of
+favorable-selection bias `.claude/rules/data-pipeline.md` and
+`.claude/rules/backtesting-rigor.md` exist to catch elsewhere in this
+project; there is no reason the gate script gets an exemption from that
+discipline.
+
+Only once Component 8 passes does `stage-5-summary.md` get written and
+Stage 6 begin -- as the next stage built on a closed Stage 5, not as the
+thing that closes it.

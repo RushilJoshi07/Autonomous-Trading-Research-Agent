@@ -776,11 +776,23 @@ this component cannot test on its own: *confirms when the evidence says to.*
 An over-skeptical agent is a different failure from an agreeable one, and it
 is equally useless.
 
-That gap is exactly what Stage 6's golden set exists to close, with planted
-**true** hypotheses the agent must confirm alongside planted false ones it
-must kill. Until that exists, the honest claim is: *this component provably
-kills a hypothesis that deserves it, and provably refuses to state a number
-it cannot source.* Not: *this component is correct.*
+**Correction, added after this document was first written:** the original
+text here said Stage 6's golden set is what closes this gap. That is wrong,
+and worth recording as a real mistake rather than quietly fixing. The build
+order is explicit that no stage begins before the previous one's gate has
+passed — so Stage 6 cannot be Stage 5's own gate-closer without the project
+depending on a stage that, by its own rule, cannot yet exist. Stage 6's
+golden set (planted-true hypotheses the agent must confirm, planted-false
+ones it must kill, run continuously for drift detection) is real and still
+coming, but it is the *next stage*, built on top of a Stage 5 that has
+already closed — not the mechanism that closes Stage 5. What actually closes
+this gap is Component 8, `verify_stage5_gate.py`: a dedicated, self-contained
+gate script in the same style as Stages 2 through 4's own gate scripts,
+proving both the kill path and the confirm path using only Stage 5's own
+tooling before Stage 5's Level-3 summary is written. Until that script
+passes, the honest claim about this component is: *it provably kills a
+hypothesis that deserves it, and provably refuses to state a number it
+cannot source.* Not: *it is correct.*
 
 Two smaller residual risks. The tolerance in `_close` (1% relative) means a
 claim could be off by up to 1% and validate — deliberate, because models
@@ -842,10 +854,14 @@ independently re-verified against its trace in a separate query. What is not
 proven is the confirmation path: it has never run on real data. The blunt way
 to put it is that an agent which rejected everything would pass every test in
 this file, and an over-skeptical agent is as useless as an agreeable one.
-Closing that requires planted-true hypotheses the agent must confirm, which
-is Stage 6's golden set — that is the next thing I would build, and it is the
-strongest differentiator in the project precisely because it tests the half
-this component cannot test itself.
+Closing that is Component 8's job — a dedicated Stage 5 gate script,
+mirroring Stages 2 through 4's own gate scripts, that proves the confirm path
+with a deliberately constructed synthetic case carrying an unambiguous,
+built-in edge, the same reasoning Stage 2's lookahead gate used a deliberately
+cheating strategy rather than hoping a real one would happen to reveal the
+bug. Stage 6's golden set is a real and separate thing, built afterward, that
+tests this same property continuously and at scale — it is not what closes
+Stage 5's own gate.
 
 **"Why is there a hard-coded 30 in the middle of your rigor code?"** Because
 it is the one number here with no literature behind it, and I would rather
@@ -872,15 +888,22 @@ which is deliberate but is a real if narrow window.
 
 ## 7. What comes next and why
 
-**Stage 6 — the evaluation harness** is the direct successor, and this
-component's honest limitation is what makes it necessary rather than
-decorative. A golden set of hypotheses with known correct verdicts —
-planted false ones the agent must kill, planted true ones it must confirm,
-and known-caveat cases where the correct answer is "insufficient evidence" —
-is the only way to test the half of Gate 2 that Component 7 cannot test
-alone. Run on every agent change and continuously in production, it also
-becomes the drift detector: when planted-false hypotheses start passing,
-something has changed for the worse.
+**Component 8, `verify_stage5_gate.py`,** comes immediately next, still
+inside Stage 5 — not Stage 6. It closes this component's stated gap (the
+confirm path unproven, no adversarial fabrication attempt against the live
+system) using a deliberately constructed synthetic case, the same discipline
+Stage 2's own gate used. Only once it passes does Stage 5's Level-3 stage
+summary get written and Stage 5 formally close.
+
+**Stage 6 — the evaluation harness** is the stage after that, not this
+component's direct successor. A golden set of hypotheses with known correct
+verdicts — planted false ones the agent must kill, planted true ones it must
+confirm, and known-caveat cases where the correct answer is "insufficient
+evidence" — tests the same properties Component 8 proves once, but
+systematically and at scale, and run continuously in production it becomes
+the drift detector: when planted-false hypotheses start passing, something
+has changed for the worse. It builds on a closed Stage 5; it does not close
+it.
 
 **Architecture.md Step 6 — the scoreboard** inherits the deferred
 correction. The raw p-values and hypothesis count stored in every verdict row
