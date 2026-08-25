@@ -318,3 +318,63 @@ cleanup. And a self-inflicted error worth recording: `git checkout` on
 loop_state.py during mutation testing discarded that file's uncommitted
 work (5 additions); all rewritten and re-verified byte-identical. Full
 trail: `docs/explanations/stage-5/step-08-live-execution-loop.md`.
+
+---
+
+## Stage 5 component 7: the verdict (SACRED GATE 2)
+
+**Change:** `agentic_core/verdict.py` -- three deterministic gates
+(`decide_status`), the multiple-comparisons correction
+(`corrected_threshold`), claim validation (`validate_claims`), the
+orphan-number scan (`scan_for_unreferenced_numbers`), code-generated
+`mandatory_caveats`, and `render_verdict` with bounded retry. New schemas
+`Claim`/`ParsedVerdict`/`Verdict`. New columns `verdicts.caveats` and
+`study_runs.failure_reason` (both deferred out of Component 6, decided
+here) via migration `aaa61daf9d89`. `scripts/render_verdict.py`. 25 tests;
+suite 287 -> 312.
+
+**Non-obvious:** THE SCOPE DECISION IS THE LOAD-BEARING ONE. "Mechanical"
+does not mean "honest" -- a human still picks WHICH DATA the mechanical
+rule reads. On the real walk-forward study (win0 in-sample +0.771; OOS
+-1.510 / +0.545 / +0.941), the same pre-registered bar gives opposite
+falsification results depending on whether every OOS window or only the
+last is scored. CORRECTION TO A PRIOR PREDICTION: narrowing Gate 1 does
+NOT flip the real study to confirmed -- the falsification gate flips
+PASS/FAIL, but the mandatory control independently rejects window 3
+(p=0.312 vs 0.025). That is real defence in depth, and it meant the real
+data could not by itself prove scope decides a verdict, so a SECOND,
+clearly-labelled CONSTRUCTED test was added where every window beats the
+control and one middle fold breaches the bar: all-windows=rejected,
+final-window=confirmed. Sample adequacy is checked AFTER the failure gates,
+deliberately: thin evidence downgrades a would-be confirmation to
+inconclusive but can never rescue a failure -- which is what makes the
+unanchored `MIN_TRADES_FOR_CONFIRMATION=30` safe to ship, since its only
+possible error direction is toward caution. The grounding prior is
+expressed as an ASSUMED EFFECTIVE SEARCH BURDEN (1.0/2.0/10.0), not an
+alpha multiplier, because "effective tests" states a claim you can argue
+with while a multiplier is a fudge factor; Harvey/Liu/Zhu is used as a
+SANITY CHECK that 10.0 is not absurd, explicitly NOT as a derivation --
+adopting their t>3.0 directly was rejected because the corpus deliberately
+carries Chen & Zimmermann (2022) as the opposing view, and citing one side
+of a disagreement the corpus was built to represent would dress an
+arbitrary choice in a citation. Stage 4's BH `correct_p_values` is
+deliberately NOT used: BH needs the full p-value set ranked together and
+verdicts render sequentially, so Bonferroni-on-count-so-far now with raw
+values preserved for a later cross-charter BH re-evaluation (which can
+DEMOTE a confirmation -- that belongs to the scoreboard). LIVE BUG worth
+recording: the first real run failed validation 3x with `0.5` and `30`
+flagged as unreferenced numbers -- both legitimate system-supplied
+constants missing from the allowlist. A too-tight check rejecting honest
+prose, NOT fabrication -- and only diagnosable because
+`VerdictValidationError` was improved mid-debugging to carry `errors` and
+`narrative`. An error that cannot separate "the model lied" from "my check
+has a gap" is not a diagnostic, least of all in the component whose whole
+job is telling those apart. REAL RESULT: status=rejected, narrative opens
+"The hypothesis is dead", 10 claims each independently re-verified against
+its trace in a separate query, 5 caveats (3 mandatory + 2 model-added).
+All four mutations caught (scope narrowing by 3 tests). HONEST LIMIT,
+stated loudly: only the REJECTION path is proven -- the confirmation path
+has never run on real data, and an agent that rejected everything would
+pass every test in this file. Stage 6's golden set with planted-TRUE
+hypotheses is what closes that. Full trail:
+`docs/explanations/stage-5/step-09-verdict.md`.

@@ -81,6 +81,12 @@ class StudyRun(Base):
     study_design_id: Mapped[str] = mapped_column(ForeignKey("study_designs.id"), index=True)
     status: Mapped[str] = mapped_column(String(16), default="running")  # running / completed / failed
     step_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Why a failed run failed. Deferred out of Component 6 pending Component
+    # 7's own design pass and decided here: a status='failed' row with no
+    # reason forces whoever finds it to reconstruct the cause from traces,
+    # and the two failure modes (exhausted retries vs exhausted budget) call
+    # for genuinely different responses.
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column()
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
@@ -116,10 +122,16 @@ class Verdict(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     study_run_id: Mapped[str] = mapped_column(ForeignKey("study_runs.id"), index=True)
     status: Mapped[str] = mapped_column(String(16))  # confirmed / rejected / inconclusive
-    claims: Mapped[list] = mapped_column(JSONB)  # [{statement, tool_call_trace_id, value}, ...]
+    claims: Mapped[list] = mapped_column(JSONB)  # [{statement, tool_call_trace_id, metric, value}, ...]
     hypothesis_count_under_charter: Mapped[int] = mapped_column(Integer)
     corrected_significance_threshold: Mapped[float] = mapped_column(Float)
     narrative: Mapped[str] = mapped_column(Text)
+    # Structured rather than folded into narrative, because
+    # docs/architecture.md Step 9 scores "whether required caveats appeared"
+    # -- a check that is trivial against a list and brittle against prose.
+    # The mandatory ones are CODE-GENERATED (see verdict.mandatory_caveats)
+    # so an agreeable model cannot drop them; the LLM's are additive only.
+    caveats: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column()
 
 

@@ -284,3 +284,52 @@ class StudyDesign(BaseModel):
                 f"in_sample ends ({self.in_sample.end})"
             )
         return self
+
+
+class Claim(BaseModel):
+    """One quantitative statement in a verdict, bound to the tool call that
+    produced it (.claude/rules/agent-honesty.md: "A claim with no valid
+    reference is REJECTED").
+
+    metric is not in the shape agentic_core/db/models.py's column comment
+    originally sketched, and it is the field that makes validation exact.
+    Without it, checking `value` means matching against ANY numeric field in
+    the referenced trace -- which would let a claim about sharpe_ratio
+    validate against a p_value that happened to be numerically close, i.e.
+    a fabricated claim passing because the wrong number agreed with it.
+    """
+
+    statement: str
+    tool_call_trace_id: int
+    metric: str
+    value: float
+
+
+class ParsedVerdict(BaseModel):
+    """Exactly what the LLM is asked to produce.
+
+    Note what is ABSENT: status. The verdict's outcome is decided by
+    deterministic code (agentic_core/verdict.decide_status) reading real
+    numbers out of tool_call_traces, and the model is TOLD that outcome
+    before it writes anything. It is explaining a decision, never making
+    one -- there is no field here it could fill in that changes the result.
+    Same structural move as StudyDesign having no control_required field
+    and CallTool having no date field.
+    """
+
+    narrative: str
+    claims: list[Claim]
+    caveats: list[str] = Field(default_factory=list)
+
+
+class Verdict(BaseModel):
+    """ParsedVerdict plus what code alone resolves. status, the corrected
+    threshold, the hypothesis count, and the mandatory caveats are never
+    fields the LLM is asked to fill in.
+    """
+
+    parsed: ParsedVerdict
+    status: Literal["confirmed", "rejected", "inconclusive"]
+    hypothesis_count_under_charter: int
+    corrected_significance_threshold: float
+    caveats: list[str]  # mandatory (code-generated) + the model's additions
