@@ -434,3 +434,61 @@ discipline.
 Only once Component 8 passes does `stage-5-summary.md` get written and
 Stage 6 begin -- as the next stage built on a closed Stage 5, not as the
 thing that closes it.
+
+---
+
+## Stage 5 component 8: verify_stage5_gate.py (SACRED GATE 2 PASSES)
+
+**Change:** `scripts/verify_stage5_gate.py` -- Stage 5's own, self-contained
+gate script, mirroring Stages 2-4's own pattern. Job 1 proves the CONFIRM
+path (never run on real data before this) by driving a deliberately rigged
+synthetic fixture through the real execution loop (real MCP subprocess,
+real Bedrock deciding every action) and the real `render_verdict` (real
+Bedrock writing the narrative). Job 2 proves fabrication is caught when it
+reaches the live system, not just when handed to `validate_claims()`
+directly, by corrupting a REAL Bedrock verdict response after the fact and
+confirming it's rejected. Ran live: 6/6 checks passed. Full trail:
+`docs/explanations/stage-5/step-10-gate-script.md`.
+
+**Non-obvious:** THE FIXTURE TOOK THREE TRIES, and the first two failures
+are real findings, not dead ends. v1 (a perfectly periodic 100<->130
+staircase) scored 100% win rate, Sharpe 0.24 -- and p=1.0, complete control
+failure, because a fully deterministic series gives RANDOMIZED entries an
+equal shot at every jump; there's no informational edge to timing when
+every transition is identical. v2 (dip immediately followed by rally) went
+NEGATIVE (Sharpe -1.8, -1.27) -- `backtesting.py` fills orders at the NEXT
+bar's OPEN, not the signal bar's close (Stage 2's own no-lookahead
+discipline, catching a fixture bug its own author hadn't accounted for);
+with no settle bar, the entry filled AFTER the rally, buying near the top.
+v3 (used) adds a one-bar hold after every engineered move so any queued
+order fills at a stable price regardless of next-open timing: Sharpe 0.932,
+61 trades, 100% win rate, p=0.001 (the n=999 resample FLOOR -- 0/999 null
+samples beat it) on BOTH independently-seeded windows. n_resamples was
+raised from 300 to 999 mid-probe specifically because the 300-floor
+(0.00332) sat uncomfortably close to the strictest grounding tier's 0.005
+threshold in absolute terms, even though it was already floored -- free to
+fix (local compute, zero API cost), so no reason to live with the
+coincidence. grounding_tier is deliberately "none" (the harshest
+multiple-comparisons correction) so a pass proves confirm survives the
+worst case, not the easiest. The charter/hypothesis/design rows are
+constructed directly in Python, NOT via Components 2/4/5's own LLM calls --
+those translate fuzzy input into structure, which isn't what this gate
+tests, and adding them would add non-determinism to a script whose whole
+point is an unambiguous repeatable proof. A REAL TEST BUG was found and
+fixed, and the diagnosis matters more than the fix: Job 2 first asserted
+zero verdict rows after the corrupted attempt and got 1 -- the instinct to
+suspect the code under test was wrong; the passing check right above it
+(the exact corrupted value named against the exact real traced value) had
+already proven detection worked, and render_verdict's own control flow
+(raise happens before the write branch) proved the row couldn't be Job 2's.
+It was Job 1's own legitimate confirmed verdict, reused deliberately to
+avoid a second live loop run -- fixed by asserting the count is UNCHANGED,
+not zero. A SEPARATE, UNRELATED MISTAKE: after the fix, the live script was
+re-run a third time purely to reformat grep output -- real wasted API
+spend, caught and disclosed rather than smoothed over; DB confirmed clean
+by direct query regardless. A SECONDARY FINDING, logged not fixed:
+`render_verdict` has no guard against being called twice for the same
+study_run_id -- exposed only because Job 2 deliberately reused Job 1's run;
+recorded as a Component 7 follow-up, since patching it isn't what this gate
+requires. STAGE 5 IS NOW FORMALLY CLOSED -- `stage-5-summary.md` follows
+this entry.
