@@ -41,10 +41,10 @@ the region-prefix pattern alone.
 
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import Callable, TypeVar
 
 from anthropic import AnthropicBedrock
-from anthropic.types import Message
+from anthropic.types import Message, Usage
 from langsmith import traceable
 from pydantic import BaseModel, ValidationError
 
@@ -78,6 +78,7 @@ def structured_output(
     max_tokens: int = 4096,
     aws_region: str = _DEFAULT_REGION,
     aws_profile: str = _DEFAULT_AWS_PROFILE,
+    on_usage: Callable[[Usage], None] | None = None,
 ) -> T:
     """Call Claude once; parse and validate the response into response_model.
 
@@ -95,6 +96,19 @@ def structured_output(
     a call depended on lived in one terminal's environment and the code ran in
     another. Naming the profile in code means the dependency travels with the
     function, not with whoever's shell happens to be open.
+
+    on_usage is an optional side channel, not a second return value: every
+    existing caller passes nothing and sees zero behavior change (same return
+    type, same exceptions). When given, it fires once per REAL Bedrock call —
+    right after the response comes back, before the tool_use/validation checks
+    below — because Bedrock bills for the call whether or not the response
+    ends up validating, so a cost observer that only fired on success would
+    silently undercount. This is the same non-invasive observation principle
+    docs/explanations/stage-5/step-08-live-execution-loop.md's TracingLLM
+    already established: the thing being measured must be the thing that
+    actually runs, so this hooks the one real call site rather than wrapping
+    it from outside, which would require re-deriving this function's own
+    tool-forcing logic in a second place that could drift from it.
 
     Raises StructuredOutputError if the response has no tool_use block, or if
     the tool_use input fails Pydantic validation. Never returns a partially-
@@ -116,6 +130,8 @@ def structured_output(
         ],
         tool_choice={"type": "tool", "name": tool_name},
     )
+    if on_usage is not None:
+        on_usage(response.usage)
 
     tool_use_block = next((block for block in response.content if block.type == "tool_use"), None)
     if tool_use_block is None:
