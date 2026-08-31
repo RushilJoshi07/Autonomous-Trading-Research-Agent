@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Literal, Protocol
 
 from mcp import ClientSession, StdioServerParameters, stdio_client
 from pydantic import BaseModel
@@ -63,7 +63,23 @@ class GoldenSetReport(BaseModel):
     construction_errors: list[str] = []
 
 
-def _score(case: GoldenCase, study_run_id: str | None, verdict: Verdict | None, detail: str) -> CaseResult:
+class ScorableCase(Protocol):
+    """The four fields _score actually reads -- nothing else. GoldenCase
+    satisfies this structurally (it has these plus charter/hypothesis/
+    design, which _score never touches), and so does
+    eval.resumable.ResumeRecord, which is how Stage 6's gate script
+    re-scores a sabotage-phase re-render using only persisted, resumable
+    state, without needing to reconstruct a full GoldenCase's
+    Charter/Hypothesis/StudyDesign objects just to call this function.
+    """
+
+    name: str
+    category: Literal["planted_true", "planted_false", "known_caveat"]
+    expected_status: Literal["confirmed", "rejected", "inconclusive"]
+    expected_caveat_substring: str | None
+
+
+def _score(case: ScorableCase, study_run_id: str | None, verdict: Verdict | None, detail: str) -> CaseResult:
     """Pure: no I/O, no LLM, no database. Testable with a hand-built fake
     Verdict the same way tests/agentic_core/test_verdict.py hand-builds
     fake traces -- see tests/eval/test_harness.py.
@@ -106,6 +122,17 @@ async def run_case(
     real Bedrock choosing every tool call, exactly as GATE5PROBE's own live
     proof did) and the real render_verdict, then scores the result.
 
+    CONTRACT: always returns a CaseResult; never raises. Both real,
+    external failure modes this function can hit -- the loop itself
+    erroring, and render_verdict erroring -- are caught inside this
+    function, not left for a caller to catch. An earlier version only
+    caught this on the loop side and relied on VerdictValidationError
+    being the only exception render_verdict could produce; a real
+    anthropic.RateLimitError proved that assumption wrong live, and
+    escaped uncaught through two callers before crashing a script that
+    had never touched database state cleanup for the case in flight. See
+    docs/explanations/stage-6/step-02-harness.md's own record of that.
+
     A loop that does not reach status='completed' never reaches
     render_verdict at all -- render_verdict's own guard requires a
     completed run, and a verdict drawn from an incomplete run is exactly
@@ -136,6 +163,24 @@ async def run_case(
             _, verdict = render_verdict(study_run_id, llm=llm)
         except VerdictValidationError as e:
             detail_parts.append(f"verdict validation failed after retries: {e.errors[:2]}")
+        except Exception as e:  # noqa: BLE001 -- found live, not designed in: a Bedrock
+            # RateLimitError from render_verdict's own LLM call escaped this function
+            # entirely on a real run, because only VerdictValidationError was caught
+            # here. run_case's own contract is "always returns a CaseResult, never
+            # raises" -- the loop-execution branch above already honors that; this
+            # branch did not, on the reasoning (recorded in this component's own step
+            # explainer) that an unexpected exception should "surface as run_case
+            # failing outright" for an outer caller to catch. That reasoning assumed
+            # an outer try/except would reliably see it -- it does not: an exception
+            # raised inside code nested within the MCP session's own async task group
+            # can get wrapped in an ExceptionGroup and surface at the session's OWN
+            # teardown, past every try/except nested inside it, including ones in
+            # code that calls run_case. Pushing the catch-all down into run_case
+            # itself, rather than trusting every future caller to wrap it correctly,
+            # is the same lesson eval.fixtures/eval.golden_cases already learned from
+            # the construction-failure bug -- applied here to the second half of this
+            # function instead of assuming the first half's fix covered both.
+            detail_parts.append(f"render_verdict raised unexpectedly: {e!r}")
 
     detail = "; ".join(detail_parts) or "scored normally"
     return _score(case, study_run_id, verdict, detail)
