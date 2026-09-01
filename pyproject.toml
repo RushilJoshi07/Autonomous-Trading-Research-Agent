@@ -27,11 +27,14 @@ dependencies = [
     "pgvector>=0.3",
     "tavily-python>=0.5",
     "langsmith>=0.1",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "httpx>=0.27",
 ]
 
 [tool.setuptools.packages.find]

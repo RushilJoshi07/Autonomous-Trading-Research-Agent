@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 *.egg-info/
+build/
 .pytest_cache/
 .DS_Store
 docs/explanations/.hook-log/
