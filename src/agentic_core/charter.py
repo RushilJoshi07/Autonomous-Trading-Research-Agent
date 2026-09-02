@@ -152,8 +152,13 @@ class CorrectionLimitExceededError(Exception):
 
 
 # Each correction is a real, fuzzy LLM re-interpretation -- the same fuzzy
-# moment parse_charter already uses, invoked again rather than replaced by a
-# second, narrower mechanism (see docs/explanations/stage-7/
+# MOMENT parse_charter already uses (docs/architecture.md's two sanctioned
+# places to be fuzzy), not the same call unchanged: the prompt is different
+# every round (see _combined_mandate_for_correction -- original text +
+# restated interpretation + correction). What makes re-running it safe is
+# that every round passes through the identical schema-validated
+# parse_charter/resolve_universe pipeline regardless of what text goes in,
+# not that the call itself repeats verbatim (see docs/explanations/stage-7/
 # step-02-charter-confirm-correct.md for the full reasoning). Bounding how
 # many times that can happen per charter is the same discipline
 # .claude/rules/agent-honesty.md already applies to hypothesis testing under

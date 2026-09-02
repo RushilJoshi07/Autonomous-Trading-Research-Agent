@@ -501,12 +501,18 @@ execution loop changed in this component.
 of a purpose-built 'apply this edit' function that would obviously be
 faster and cheaper?"** Because `docs/architecture.md` names exactly two
 places this system is allowed to let an LLM be fuzzy, and a correction is
-squarely the first one, invoked again — not a third mechanism. A
-purpose-built editor would duplicate `_charter_prompt`'s own prompt
-engineering (the real sector/industry pairing constraint that exists
-because of a confirmed bug) with none of its track record, and it would
-be a second surface area to keep in sync with the first every time the
-charter schema changes.
+squarely the first one, run again — not a third mechanism. "Run again" is
+not "repeated unchanged": the prompt is different every round (original
+text + restated interpretation + correction, built by
+`_combined_mandate_for_correction`). What's identical round to round is
+the schema-validated pipeline the prompt is run through
+(`parse_charter` → `resolve_universe`), and that's what actually makes
+re-running it safe regardless of what text goes in — not the input being
+the same. A purpose-built editor would duplicate `_charter_prompt`'s own
+prompt engineering (the real sector/industry pairing constraint that
+exists because of a confirmed bug) with none of its track record, and it
+would be a second surface area to keep in sync with the first every time
+the charter schema changes.
 
 **"Why cap corrections at 2 instead of letting her keep going until she's
 happy?"** Because every round is a real LLM call with real hallucination

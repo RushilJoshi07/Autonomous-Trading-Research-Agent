@@ -228,3 +228,49 @@ table.board .num.neg { color: var(--rejected); }
   .trace-path { animation: none; stroke-dashoffset: 0; }
   .card { transition: none; }
 }
+
+/* Plain body text -- referenced by the Component-3 stub pages
+   (MandatePage/CharterDetailPage/ScoreboardPage) before this class
+   existed; defined now rather than duplicated, since Component 4 is the
+   first page that actually needs real body copy. Deliberately no color
+   here -- every call site sets its own via inline style, same as those
+   stubs already did, since the right color depends on context (secondary
+   text vs. an error). */
+.block-body { font-family: var(--font-ui); font-size: 15px; line-height: 1.6; max-width: 62ch; margin: 0; }
+
+/* ============ FORM CONTROLS (Component 4) ============ */
+.field { display: flex; flex-direction: column; gap: 8px; }
+
+.textarea {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  resize: vertical;
+  min-height: 90px;
+}
+.textarea::placeholder { color: var(--text-3); }
+.textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.textarea:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: var(--ink-0); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-dim); color: var(--text-1); }
+.btn-secondary { background: var(--surface-raised); color: var(--text-1); border-color: var(--border); text-decoration: none; }
+.btn-secondary:hover:not(:disabled) { border-color: var(--ink-4); }
+.btn-ghost { background: transparent; color: var(--text-2); border-color: transparent; }
+.btn-ghost:hover:not(:disabled) { color: var(--text-1); }
