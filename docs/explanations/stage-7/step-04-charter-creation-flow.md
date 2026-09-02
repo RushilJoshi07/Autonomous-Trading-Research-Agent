@@ -325,15 +325,28 @@ mocked backend"), this was checked live, not with a test double:
   - Repeated the visual check in light mode (the app's theme toggle) — form
     controls and buttons render with correct contrast in both themes, using only
     existing design tokens.
+  - **The cap-exhausted path, in a follow-up pass at explicit request:** a second
+    fresh mandate ("seasonality on large-cap energy companies") → round 0, resolved
+    to `[XOM, CVX]`. First correction ("widen to all large-cap energy and
+    utilities") → round 1, the real model loosened the screening cut from `quintile`
+    to `tercile`. Second correction ("switch scoring preference to robustness") →
+    round 2 — the UI correctly dropped the "Request a correction" button and showed
+    "No corrections remain — confirm as-is or start over" instead of just hiding it.
+    Read the actual `POST .../correct` response body back via
+    `read_network_requests` to confirm the server agreed independently:
+    `correction_round: 2`, `blocked: false`, `parent_charter_id` chained to the
+    round-1 row, `scoring_preference: "robustness"` — the correction had genuinely
+    applied, not just the round counter. Confirmed from that exact state: the
+    `POST .../confirm` request targeted the round-2 charter's own id and returned
+    `200`. This closes the gap the first verification pass had explicitly disclosed
+    as untested (see below) rather than assumed to work.
 
-**What this does not prove.** The correction-cap-exhausted state (requesting a third
-correction after two are used) and the blocked state (an empty resolved universe)
-were verified by code inspection and the conditional-rendering logic, not by driving
-a real LLM to those specific outcomes live — doing so would require either finding a
-mandate that reliably resolves to an empty universe or spending two more real
-correction rounds against paid API calls purely to exercise a `<span>` instead of a
-`<button>`. The 404/409 error-message rendering (`extractErrorDetail`'s non-happy
-paths) is similarly unexercised live, since normal UI flow can't reach a
+**What this does not prove.** The blocked state (an empty resolved universe) was
+verified by code inspection and the conditional-rendering logic only, not by
+driving a real LLM to that outcome live — doing so would need a mandate reliably
+engineered to resolve to zero tickers, which wasn't attempted. The 404/409
+error-message rendering (`extractErrorDetail`'s non-happy paths) is similarly
+unexercised live, since normal UI flow can't reach a
 not-found/already-confirmed/limit-exceeded charter id — those branches exist as
 defense-in-depth against a state race (e.g., two tabs open on the same charter),
 not a path this UI's own buttons can trigger. None of this touches Sacred Gate 1 or
@@ -375,15 +388,19 @@ using the freed space to say *why* ("no corrections remain — confirm as-is or 
 over"), teaches the two-round policy instead of just blocking a click silently or
 surfacing a raw error string for an entirely predictable state.
 
-**Honest weakness:** the blocked-universe and cap-exhausted paths are inspected, not
-live-driven (Section 5) — if there were a subtle bug specific to *that* combination
-of state (for instance, `blocked` still true after a correction that also happened
-to exhaust the cap), this component's live verification would not have caught it.
-The mitigation is that both are simple, independent boolean-gated renders reusing
-logic already exercised in the round-0-to-round-1 transition, not a new interaction
-between them — but that's a code-review argument, not a live-test one, and it's
-worth saying so plainly rather than claiming a verification pass this component
-didn't actually perform.
+**Honest weakness:** the cap-exhausted path was initially shipped inspected-only,
+not live-driven — flagged explicitly as a residual risk rather than assumed to work,
+and then actually closed in a follow-up pass at direct request (Section 5): a real
+charter driven through round 0 → round 1 → round 2, confirmed independently via the
+raw `POST .../correct` response body rather than trusting the rendered UI, then
+confirmed from that exact state. The blocked-universe path (an empty resolved
+universe) is still inspected only, not live-driven — it would need a mandate
+reliably engineered to resolve to zero tickers, which wasn't attempted. Its
+mitigation is the same kind of code-review argument the cap-exhausted path used to
+rely on: it's a simple, independent boolean-gated render reusing logic already
+exercised elsewhere, not a new interaction — worth saying plainly that this is a
+weaker form of evidence than a live test, rather than claiming a verification pass
+that wasn't actually performed for that specific path.
 
 ---
 

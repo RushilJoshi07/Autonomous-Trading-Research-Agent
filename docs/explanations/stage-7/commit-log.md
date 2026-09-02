@@ -67,3 +67,20 @@ step-02's own AAPL -> [NVDA, MSFT] correction result by clicking through
 the UI rather than curl, plus confirm, reset, and both themes.
 `npm run build`/`lint` clean. Full design writeup: `docs/explanations/
 stage-7/step-04-charter-creation-flow.md`.
+
+## Stage 7 component 4 follow-up: cap-exhausted correction path verified live
+
+The first verification pass explicitly disclosed the correction-cap-
+exhausted state (round 2 of 2) as inspected-only, not live-driven -- asked
+to close that gap before the component is considered done. Drove a fresh
+charter through two real corrections (energy/seasonality mandate ->
+widen the universe -> switch scoring preference), confirming at each step
+via the raw `POST .../correct` response body, not just the rendered UI,
+that the server agreed: `correction_round: 2`, `blocked: false`,
+`parent_charter_id` chained correctly, the scoring-preference change
+genuinely applied. The UI correctly replaced the correction button with
+"No corrections remain" text instead of hiding it, and confirming from
+that exact state succeeded (`POST .../confirm` -> 200, targeting the
+round-2 charter's own id). `docs/explanations/stage-7/
+step-04-charter-creation-flow.md` updated to reflect this as verified
+rather than disclosed-as-untested. No code changes -- verification only.
