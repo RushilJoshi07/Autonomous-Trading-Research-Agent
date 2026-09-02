@@ -84,3 +84,35 @@ that exact state succeeded (`POST .../confirm` -> 200, targeting the
 round-2 charter's own id). `docs/explanations/stage-7/
 step-04-charter-creation-flow.md` updated to reflect this as verified
 rather than disclosed-as-untested. No code changes -- verification only.
+
+## Stage 7 component 5: research log with the status-poll reveal -- two live bugs found and fixed
+
+New `useStudyRunPoll.ts` (a setTimeout-chained poll of `GET /study-runs/{id}`,
+three outcomes not two -- running/awaiting-verdict/resolved-or-failed), new
+`VerdictCard.tsx` (narrative/claims/caveats + a count-up on
+`corrected_significance_threshold`), new `HypothesisRow.tsx`,
+`CharterDetailPage.tsx` rewritten from Component 3's stub. Found two real,
+undocumented backend gaps by reading `loop_graph.py`/`verdict.py`:
+`render_verdict` is never called automatically when a loop finishes (a
+currently-manual script), and a *failed* run leaves its hypothesis
+permanently stuck at `status='testing'` with no code path off it -- designed
+around both explicitly rather than silently assuming `completed` always means
+"verdict ready."
+
+Live testing found and fixed two real bugs, not just confirmed the happy
+path: the count-up animation got permanently stuck at 0 because
+`requestAnimationFrame` is fully suspended (not just throttled) for a hidden
+tab -- proven with a bare rAF loop that timed out after 45 real seconds
+without firing once -- fixed with a `setTimeout` backstop, reverified against
+the real API value (0.0250). Separately, seeding a synthetic `testing`
+hypothesis directly in Postgres and flipping its study run to `completed`
+with a real verdict attached *while the page stayed open* surfaced a stale-
+prop bug: the row's `isTesting` was derived from a hypothesis prop the parent
+never refetches, so the "awaiting verdict" trace-card kept rendering
+alongside the freshly-revealed verdict card. Fixed with
+`effectiveStatus = verdict?.status ?? hypothesis.status` (verdict.status is
+authoritative once known -- `render_verdict` writes the identical value to
+both rows in one operation). Both fixes reverified live afterward; all
+synthetic Postgres rows deleted and their absence reconfirmed.
+`npm run build`/`lint` clean throughout. Full design writeup:
+`docs/explanations/stage-7/step-05-research-log-status-poll.md`.

@@ -222,6 +222,13 @@ table.board .num.neg { color: var(--rejected); }
 }
 @keyframes draw { 0% { stroke-dashoffset: 300; } 55% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; opacity: 0; } }
 
+/* Component 5: a study run can finish before its verdict does (render_verdict
+   is a separate, currently-manual step -- see useStudyRunPoll's own comment).
+   Freezing the trace mid-draw, rather than looping it forever, is what tells
+   the two states apart at a glance: still running vs. done-but-waiting-on-a-
+   human, without a second visual language for the second one. */
+.trace-card.paused .trace-path { animation: none; stroke-dashoffset: 0; opacity: 0.4; }
+
 .count-val { font-family: var(--font-mono); font-size: 44px; font-weight: 500; color: var(--text-1); font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
