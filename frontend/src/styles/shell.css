@@ -1,0 +1,54 @@
+/* The app shell's own chrome -- not part of the ported Fathom design
+   language (fathom.css), but built entirely from its tokens, since this
+   persistent header/nav/toggle is Component 3's own addition rather than
+   anything the published artifact specified directly. */
+
+.shell-header {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--border);
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.shell-wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--text-1);
+}
+
+.shell-nav {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+}
+
+.shell-nav-link {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.shell-nav-link:hover { color: var(--text-1); }
+
+.shell-nav-link-active { color: var(--accent); }
+
+.shell-theme-toggle {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.shell-theme-toggle:hover { color: var(--text-1); border-color: var(--ink-4); }

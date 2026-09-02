@@ -25,3 +25,22 @@ empty-universe charter -- both previously only enforced by
 LLM: a real correction genuinely widened a resolved universe from
 `[AAPL]` to `[NVDA, MSFT]`. Full design writeup: `docs/explanations/
 stage-7/step-02-charter-confirm-correct.md`.
+
+## Stage 7 component 3: frontend app shell — CORS guess confirmed live
+
+New `frontend/` (Vite + React + TypeScript). Fathom's real tokens ported
+from the published design-language artifact (read in full, not just the
+plan's summary -- its frame-runtime JS was deliberately left out, only
+the design-system CSS was ported). A `useTheme` hook supplies the
+dark-first/`prefers-color-scheme`/explicit-override cascade the artifact
+itself doesn't need to (its host manages that for it; a standalone app
+has no such host). The API client is *generated* (`openapi-typescript` +
+`openapi-fetch`) from the backend's live `/openapi.json`, not
+hand-typed, so it cannot silently drift from the real Pydantic shapes --
+committed like a lockfile, per your call. Found and fixed a real
+`openapi-typescript`/TypeScript-6 peer-dependency conflict by pinning to
+`5.9.3` rather than forcing past it. Live verification against the real
+backend confirmed the Components 1-2 CORS guess (`localhost:5173`) was
+correct on the first real cross-origin request, plus dynamic routing and
+both theme-override and system-preference paths. Full design writeup:
+`docs/explanations/stage-7/step-03-frontend-app-shell.md`.
