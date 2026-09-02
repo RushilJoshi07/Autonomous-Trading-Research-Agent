@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { components } from '../api/schema.gen'
 
 type Verdict = components['schemas']['VerdictOut']
@@ -80,7 +81,10 @@ export function VerdictCard({ verdict }: VerdictCardProps) {
               {claim.statement}{' '}
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-3)', fontSize: 12 }}>
                 ({claim.metric} = {claim.value})
-              </span>
+              </span>{' '}
+              <Link className="trace-link" to={`/study-runs/${verdict.study_run_id}/traces#trace-${claim.tool_call_trace_id}`}>
+                view trace #{claim.tool_call_trace_id}
+              </Link>
             </p>
           ))}
         </div>

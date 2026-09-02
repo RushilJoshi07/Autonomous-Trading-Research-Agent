@@ -116,3 +116,40 @@ both rows in one operation). Both fixes reverified live afterward; all
 synthetic Postgres rows deleted and their absence reconfirmed.
 `npm run build`/`lint` clean throughout. Full design writeup:
 `docs/explanations/stage-7/step-05-research-log-status-poll.md`.
+
+## Stage 7 component 6: trace drill-down -- a real broken-reference test, and a second live scroll bug
+
+New `TraceCard.tsx` (a generic scalars-inline/full-JSON-collapsed summarizer,
+one function reused for every tool instead of per-`tool_name` renderers), new
+`TraceDrilldownPage.tsx` at `/study-runs/:studyRunId/traces` (fetches the run,
+its ordered traces grouped by walk-forward window, and the owning hypothesis
+for a breadcrumb; reads a `#trace-<id>` hash and scrolls+highlights the match).
+`VerdictCard.tsx`'s claims and `HypothesisRow.tsx` both gained real links --
+the "View trace" link is deliberately gated on `study_run_id` alone, not
+verdict presence, since traces are real evidence regardless of how a run
+turned out. No backend changes.
+
+Before any code existed, asked what happens when a claim's trace reference is
+broken -- the one screen that can't itself guess, since it exists to prove
+Sacred Gate 2's no-fabrication guarantee. Landed on four distinct, honestly-
+worded states (found / not-found-in-a-real-list / zero-traces / run-doesn't-
+exist), explicitly rejecting a new backend lookup endpoint that would let the
+not-found message overclaim a cause it can't actually verify. Then required
+constructing a genuinely broken reference in the real database and clicking
+the real rendered claim link (not a hand-typed URL) to prove it -- seeded a
+synthetic verdict whose claim named a `tool_call_trace_id` matching nothing in
+its own run's real trace list, confirmed the exact designed callout rendered
+with the real trace still showing un-highlighted underneath, deleted every
+synthetic row afterward.
+
+That same live test caught a second real bug: `scrollIntoView({behavior:
+'smooth'})` never moved the page at all -- the identical root cause as
+Component 5's count-up bug (paint-driven animations suspend on a hidden tab),
+found a second time. Fixed by checking `document.hidden` and using `'instant'`
+when hidden rather than reusing Component 5's timer-backstop pattern, since a
+timer here risks visibly cutting off a real smooth-scroll in progress on an
+actually-visible tab -- a different failure mode needs a different fix.
+Re-verified live: the correct trace scrolled into view, was highlighted, and
+its real value cross-checked exactly against the claim that linked to it.
+`npm run build`/`lint` clean. Full design writeup: `docs/explanations/
+stage-7/step-06-trace-drilldown.md`.

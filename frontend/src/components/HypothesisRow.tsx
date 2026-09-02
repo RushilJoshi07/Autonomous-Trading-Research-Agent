@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { client } from '../api/client'
 import type { components } from '../api/schema.gen'
 import { useStudyRunPoll } from '../hooks/useStudyRunPoll'
@@ -99,6 +100,14 @@ export function HypothesisRow({ hypothesis }: HypothesisRowProps) {
         </div>
         {!isTesting && <span className={`pill ${isResolved ? effectiveStatus : 'inconclusive'}`}>{effectiveStatus}</span>}
       </div>
+
+      {hypothesis.study_run_id && (
+        <div style={{ marginTop: 6 }}>
+          <Link className="trace-link" to={`/study-runs/${hypothesis.study_run_id}/traces`}>
+            View trace
+          </Link>
+        </div>
+      )}
 
       {isTesting && (
         <div className={`trace-card${studyRun?.status === 'completed' ? ' paused' : ''}`} style={{ marginTop: 4 }}>
