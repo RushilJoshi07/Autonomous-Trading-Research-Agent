@@ -27,6 +27,16 @@ class Charter(Base):
     confirmed: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column()
     confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Correction chain (Stage 7 Component 2) -- one immutable row per
+    # attempt, the same "immutable, no updated_at" pattern StudyDesign
+    # already uses and for the same reason: never mutate a row she's
+    # already seen, so the full history of what she said and how the
+    # interpretation changed stays queryable rather than being overwritten.
+    # parent_charter_id is null for the original attempt (round 0); a
+    # correction always inserts a new row rather than editing this one.
+    parent_charter_id: Mapped[str | None] = mapped_column(ForeignKey("charters.id"), nullable=True, index=True)
+    correction_round: Mapped[int] = mapped_column(Integer, default=0)
+    correction_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Hypothesis(Base):

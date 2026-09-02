@@ -34,6 +34,22 @@ def loop_db_session(test_engine, monkeypatch):
 
 
 @pytest.fixture
+def charter_db_session(test_engine, monkeypatch):
+    """Truncates charters and points agentic_core.charter's own
+    SessionFactory at the test database -- same import-location monkeypatch
+    pattern as loop_db_session/corpus_db_session above.
+    """
+    with test_engine.connect() as conn:
+        conn.execute(text("TRUNCATE tool_call_traces, study_runs, study_designs, hypotheses, charters CASCADE"))
+        conn.commit()
+    Session = sessionmaker(bind=test_engine)
+    monkeypatch.setattr("agentic_core.charter.SessionFactory", Session)
+    session = Session()
+    yield session
+    session.close()
+
+
+@pytest.fixture
 def corpus_db_session(test_engine, monkeypatch):
     """Truncates corpus_papers/corpus_chunks and points agentic_core.corpus's
     module-level SessionFactory at the test database -- same monkeypatch

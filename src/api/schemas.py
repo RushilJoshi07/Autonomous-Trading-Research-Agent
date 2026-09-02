@@ -29,6 +29,32 @@ class CharterOut(BaseModel):
     confirmed: bool
     created_at: datetime
     confirmed_at: datetime | None
+    # Correction chain (Stage 7 Component 2). parent_charter_id is null for
+    # the original, round-0 attempt. correction_round tells a client how
+    # many correction rounds this row already reflects, which is what lets
+    # the confirmation screen know whether to still offer "request another
+    # correction" (see agentic_core.charter.MAX_CORRECTION_ROUNDS).
+    parent_charter_id: str | None
+    correction_round: int
+    correction_text: str | None
+
+
+class CharterCreateIn(BaseModel):
+    mandate_text: str
+
+
+class CharterCorrectIn(BaseModel):
+    correction_text: str
+
+
+class CharterWriteOut(CharterOut):
+    """create_charter/correct_charter both return (id, Charter, blocked) --
+    this is that third field, surfaced alongside the same row shape
+    GET /charters/{id} already returns, rather than a differently-shaped
+    response for writes vs. reads of the same resource.
+    """
+
+    blocked: bool
 
 
 class HypothesisOut(BaseModel):
