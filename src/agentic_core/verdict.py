@@ -127,6 +127,79 @@ TIER_SEARCH_BURDEN: dict[str, float] = {
 
 _NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
+# A hypothesis's own auto-generated name often embeds a digit as a unit
+# abbreviation -- "52W_High_Proximity_Momentum" -- and the model naturally
+# echoes that name in prose ("the 52-week-high proximity strategy"). That
+# "52" is a self-reference to a name already validated at hypothesis-
+# generation time, not a fresh evidentiary claim, and scan_for_unreferenced_
+# numbers must not flag it -- but must still flag a genuinely fabricated
+# number that happens to share the same digit ("a 52% win rate").
+_NAME_DIGIT_LETTER_RE = re.compile(r"(\d+(?:\.\d+)?)([A-Za-z])")
+_SELF_REFERENCE_GAP_RE = re.compile(r"^[\s-]{0,2}")
+
+# Matching on the first letter alone is not enough to confirm the SAME word:
+# "52 winning trades" or "52 weighted signals" also start with "w" and would
+# wrongly pass. Requiring membership in this small, closed, stable category
+# (not a letter->meaning dictionary -- it maps nothing, it only tests set
+# membership) is what actually distinguishes a real unit word from any other
+# word that happens to share a first letter. Extend this set if the
+# codebase's own hypothesis names start using a period word not listed here.
+#
+# "session"/"sessions" was checked against, not just assumed absent from,
+# this project's own naming: grepped src/backtester/schema.py and
+# src/backtester/extended_indicators.py (every place an indicator or period
+# word is actually defined) and it appears nowhere as a time unit. Left out
+# rather than added speculatively -- add it only once a real hypothesis name
+# actually uses it, the same "extend on real evidence, not preemptively"
+# discipline TIER_SEARCH_BURDEN and MIN_TRADES_FOR_CONFIRMATION already use
+# elsewhere in this module.
+_TIME_UNIT_WORDS = {"day", "days", "week", "weeks", "month", "months", "quarter", "quarters", "year", "years"}
+_WORD_RE = re.compile(r"[a-z]+")
+
+
+def _self_reference_digit_letters(hypothesis_name: str) -> dict[float, str]:
+    """Maps each digit-run in the name that's immediately followed by a
+    letter to that letter, lowercased -- e.g. {52.0: 'w'} for "52W_High...".
+
+    Deliberately does NOT try to expand the letter into a word ("w" ->
+    "week"): a hardcoded abbreviation table would need updating for every
+    unit letter a future hypothesis name happens to use, and would still
+    miss one nobody anticipated. Matching on the letter alone generalizes
+    to any of them for free -- see _is_self_reference for how.
+    """
+    return {float(m.group(1)): m.group(2).lower() for m in _NAME_DIGIT_LETTER_RE.finditer(hypothesis_name)}
+
+
+def _is_self_reference(narrative: str, position: int, letter: str) -> bool:
+    """True if the text right after a flagged number -- skipping up to one
+    hyphen or space ("52-week", "52 week") -- is a genuine time-unit word
+    (see _TIME_UNIT_WORDS) starting with the SAME letter that follows the
+    number in the hypothesis's own name ("52W" -> "w"). Covers "52w"/
+    "52-week"/"52 week"/"52 weeks" with one rule instead of enumerating each
+    surface form. Requires BOTH conditions, not just the letter: "52%"/
+    "52 million" fail because their next letter doesn't match "w", and
+    "52 winning trades"/"52 weighted signals" fail despite starting with the
+    right letter because "winning"/"weighted" are not time-unit words --
+    a fabricated claim does not get a pass just because it happens to start
+    with the same letter as the hypothesis's own abbreviation.
+
+    This is a WHOLE-WORD match, not a prefix match, and that is load-bearing
+    rather than incidental: `_WORD_RE.match(rest)` is greedy, so it captures
+    the entire contiguous run of letters right after the number ("weekend",
+    "weeklong" -- not "week") BEFORE the set-membership check ever runs.
+    `"weekend" in _TIME_UNIT_WORDS` and `"weeklong" in _TIME_UNIT_WORDS` are
+    both False under Python's exact set equality, so "52 weekend momentum"
+    and "52weeklong rally" are correctly rejected as self-references despite
+    starting with "week" -- see test_a_number_followed_by_a_longer_word_
+    starting_with_a_unit_word_is_not_a_self_reference, which locks this in.
+    """
+    tail = narrative[position : position + 16].lower()
+    gap = _SELF_REFERENCE_GAP_RE.match(tail)
+    rest = tail[gap.end() :]
+    word_match = _WORD_RE.match(rest)
+    word = word_match.group(0) if word_match else ""
+    return word in _TIME_UNIT_WORDS and word.startswith(letter)
+
 
 class VerdictValidationError(Exception):
     """Raised when the LLM's verdict could not be validated after retries.
@@ -369,15 +442,24 @@ def validate_claims(claims: list[Claim], traces: list[ToolCallTraceRow]) -> list
     return errors
 
 
-def scan_for_unreferenced_numbers(narrative: str, claims: list[Claim], allowed: set[float]) -> list[str]:
+def scan_for_unreferenced_numbers(
+    narrative: str, claims: list[Claim], allowed: set[float], hypothesis_name: str = ""
+) -> list[str]:
     """Closes the hole validate_claims alone leaves open.
 
     A model could keep the claims list scrupulously clean and still write a
     fabricated number into the prose -- the claims would all validate, and
     the invented figure would ride along unchecked. So every numeric token
-    in the narrative must resolve to either a validated claim's value or a
+    in the narrative must resolve to either a validated claim's value, a
     structural value from the caller's allowlist (window count, hypothesis
-    count, the threshold, the design's own years).
+    count, the threshold, the design's own years), or a self-reference to a
+    digit embedded in the hypothesis's own already-validated name (see
+    _is_self_reference) -- checked per OCCURRENCE, not per digit string, so
+    a legitimate self-reference in one place never clears a genuinely
+    fabricated number sharing the same digit elsewhere in the same
+    narrative. hypothesis_name defaults to "" (no self-references possible)
+    so every existing call site not touched by this exception keeps working
+    unchanged.
 
     Deliberately operates on the LLM's narrative ONLY, before mandatory
     caveats are appended -- those are code-generated and contain code-chosen
@@ -385,12 +467,17 @@ def scan_for_unreferenced_numbers(narrative: str, claims: list[Claim], allowed: 
     against itself.
     """
     claimed = [c.value for c in claims]
+    self_ref_letters = _self_reference_digit_letters(hypothesis_name)
     orphans = []
-    for token in _NUMBER_RE.findall(narrative):
+    for match in _NUMBER_RE.finditer(narrative):
+        token = match.group(0)
         value = float(token)
         if any(_close(value, c) for c in claimed):
             continue
         if any(_close(value, a) for a in allowed):
+            continue
+        letter = self_ref_letters.get(value)
+        if letter is not None and _is_self_reference(narrative, match.end(), letter):
             continue
         orphans.append(token)
     return [f"narrative contains {t!r}, which matches no validated claim" for t in sorted(set(orphans))]
@@ -590,7 +677,9 @@ def render_verdict(study_run_id: str, llm=structured_output) -> tuple[str, Verdi
 
         last_narrative = candidate.narrative
         errors = validate_claims(candidate.claims, traces)
-        errors += scan_for_unreferenced_numbers(candidate.narrative, candidate.claims, allowed)
+        errors += scan_for_unreferenced_numbers(
+            candidate.narrative, candidate.claims, allowed, hypothesis.parsed.rule.name
+        )
         if not errors:
             parsed = candidate
             break

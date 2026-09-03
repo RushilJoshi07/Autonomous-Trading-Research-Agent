@@ -492,3 +492,36 @@ study_run_id -- exposed only because Job 2 deliberately reused Job 1's run;
 recorded as a Component 7 follow-up, since patching it isn't what this gate
 requires. STAGE 5 IS NOW FORMALLY CLOSED -- `stage-5-summary.md` follows
 this entry.
+
+---
+
+## Post-closure fix: verdict validator's self-reference false positive
+
+**Change:** `scan_for_unreferenced_numbers` (`agentic_core/verdict.py`) was
+rejecting real, honest verdicts whose prose echoed the hypothesis's own
+auto-generated name (`"52W_High_Proximity_Momentum..."` described as "the
+52-week-high proximity strategy"), flagging the shared digit as an
+unvalidated claim. Fixed with a narrow, per-occurrence self-reference
+exception: a digit embedded in the hypothesis's own name, immediately
+followed by a genuine time-unit word (a small closed set -- day/week/
+month/quarter/year, not a blanket digit allowlist) matching that name's own
+abbreviation letter, is exempted; the same digit anywhere else in the same
+narrative with no such context is still flagged exactly as before. New
+optional `hypothesis_name` parameter on `scan_for_unreferenced_numbers`,
+default `""`, so every prior call site is unaffected.
+
+**Non-obvious:** Found live, not by inspection -- running Stage 7's real
+end-to-end gate walkthrough for the first time, a real study run's verdict
+failed all 3 of `render_verdict`'s own retry attempts and correctly wrote
+nothing. Went through three real rounds of adversarial review before
+shipping, each catching something real: first-letter-only matching would
+have let a fabricated "52 winning trades" through (no vocabulary check at
+all in the first draft); whether the match was prefix-based turned out to
+already be correct (Python's exact set equality against a greedily-matched
+whole word) but was undocumented and untested until asked; case-sensitivity
+also turned out already correct (the whole tail is lowercased before
+matching) but likewise untested until asked. All three rounds were answered
+by running the actual function against the actual disputed input first,
+never by re-reading the code and reasoning about what it should do. Full
+trail, including the three-round review as the main teaching content:
+`docs/explanations/stage-5/step-09b-verdict-self-reference-fix.md`.

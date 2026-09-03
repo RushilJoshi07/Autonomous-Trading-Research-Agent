@@ -359,6 +359,89 @@ def test_rounding_is_tolerated_but_a_different_number_is_not():
     assert scan_for_unreferenced_numbers("Sharpe was 0.85.", claims, allowed=set()) != []
 
 
+def test_narrative_echoing_the_hypothesis_name_is_not_flagged():
+    """The real bug, found live during Stage 7's end-to-end walkthrough
+    (2026-09-02): a hypothesis auto-named '52W_High_Proximity_Momentum_
+    NVDA_MSFT' got described in its own verdict as "the 52-week-high
+    proximity momentum strategy" -- render_verdict rejected three real,
+    honest attempts in a row because "52" matched no claim. That "52" is a
+    self-reference to a name already validated at hypothesis-generation
+    time, not a fresh number needing a trace citation.
+    """
+    claims = [Claim(statement="sharpe was -0.13", tool_call_trace_id=15, metric="sharpe_ratio", value=-0.13)]
+    narrative = "The 52-week-high proximity momentum strategy failed, with a Sharpe of -0.13."
+    orphans = scan_for_unreferenced_numbers(
+        narrative, claims, allowed=set(), hypothesis_name="52W_High_Proximity_Momentum_NVDA_MSFT"
+    )
+    assert orphans == []
+
+
+def test_a_fabricated_number_sharing_the_hypothesis_name_digit_is_still_caught():
+    """The discriminating case the fix must not break: the SAME digit that
+    legitimately self-references the hypothesis's own name also appears
+    as a genuinely fabricated claim elsewhere in the narrative, with no
+    name-context around it. Narrowing the false positive must not open a
+    hole a real fabrication could walk through.
+    """
+    claims = [Claim(statement="sharpe was -0.13", tool_call_trace_id=15, metric="sharpe_ratio", value=-0.13)]
+    narrative = "The 52-week-high proximity strategy failed, despite a fabricated 52% win rate."
+    orphans = scan_for_unreferenced_numbers(
+        narrative, claims, allowed=set(), hypothesis_name="52W_High_Proximity_Momentum_NVDA_MSFT"
+    )
+    assert any("52" in o for o in orphans)
+
+
+def test_a_same_first_letter_word_does_not_count_as_a_self_reference():
+    """Matching on the first letter alone is not enough: "winning" and
+    "weighted" also start with "w", the same letter "52W" abbreviates, so a
+    naive first-letter check would wrongly wave through a fabricated "52
+    winning trades" or "52 weighted signals" claim that has no backing
+    claim at all. Only a genuine time-unit word (week/weeks, in this
+    hypothesis's case) may exempt the number -- everything else sharing
+    just the first letter must still be flagged.
+    """
+    claims = [Claim(statement="sharpe was -0.13", tool_call_trace_id=15, metric="sharpe_ratio", value=-0.13)]
+    narrative = "The strategy closed 52 winning trades, with a Sharpe of -0.13."
+    orphans = scan_for_unreferenced_numbers(
+        narrative, claims, allowed=set(), hypothesis_name="52W_High_Proximity_Momentum_NVDA_MSFT"
+    )
+    assert any("52" in o for o in orphans)
+
+
+def test_a_number_followed_by_a_longer_word_starting_with_a_unit_word_is_not_a_self_reference():
+    """The same shape of bug as test_a_same_first_letter_word_..., one level
+    tighter: "weekend" and "weeklong" both start with the literal substring
+    "week", not just the letter "w" -- a prefix-matching implementation
+    would wrongly exempt "52 weekend momentum" or "52weeklong rally". The
+    match must require "week" to be the WHOLE word right after the number,
+    not merely how it starts, so both stay flagged.
+    """
+    claims = [Claim(statement="sharpe was -0.13", tool_call_trace_id=15, metric="sharpe_ratio", value=-0.13)]
+    narrative = (
+        "The strategy gained 52 weekend momentum and a fabricated 52weeklong "
+        "rally, with a real Sharpe of -0.13."
+    )
+    orphans = scan_for_unreferenced_numbers(
+        narrative, claims, allowed=set(), hypothesis_name="52W_High_Proximity_Momentum_NVDA_MSFT"
+    )
+    assert any("52" in o for o in orphans)
+
+
+def test_a_capitalized_self_reference_is_still_recognized():
+    """The narrative's own capitalization ("52-Week-high", sentence-initial
+    capital included) must not defeat the self-reference match -- _WORD_RE
+    only matches lowercase letters, but _is_self_reference lowercases the
+    whole tail slice before that regex ever runs, so case is normalized
+    before matching rather than depended on to already be lowercase.
+    """
+    claims = [Claim(statement="sharpe was -0.13", tool_call_trace_id=15, metric="sharpe_ratio", value=-0.13)]
+    narrative = "52-Week-high proximity failed early. Sharpe was -0.13."
+    orphans = scan_for_unreferenced_numbers(
+        narrative, claims, allowed=set(), hypothesis_name="52W_High_Proximity_Momentum_NVDA_MSFT"
+    )
+    assert orphans == []
+
+
 # ---------------------------------------------------------------------------
 # The grounding prior
 # ---------------------------------------------------------------------------
